@@ -1,42 +1,40 @@
-from flask import Flask, render_template, request, session, redirect, url_for
+from flask import Flask, render_template, request, session, redirect
 from flask_socketio import SocketIO, emit
-import os
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'ghost_secret_key_123'
-socketio = SocketIO(app, cors_allowed_origins="*")
+app.secret_key = "ghostsecret12345"  # session ke liye zaruri
+socketio = SocketIO(app)
 
 APP_PASSWORD = "1234"
 CHAT_PASSWORD = "abcd"
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route("/", methods=["GET", "POST"])
 def login():
-    if request.method == 'POST':
-        if request.form['password'] == APP_PASSWORD:
-            session['logged_in'] = True
-            return redirect(url_for('chat'))
+    if request.method == "POST":
+        password = request.form.get("password")
+        if password == APP_PASSWORD:
+            session["logged_in"] = True
+            return redirect("/chat")  # login ke baad chat pe bhej dega
         else:
-            return render_template('login.html', error="Password galat hai bhai")
-    return render_template('login.html')
+            return render_template("login.html", error="Wrong Password!")
+    return render_template("login.html")
 
-@app.route('/chat')
+@app.route("/chat")
 def chat():
-    if not session.get('logged_in'):
-        return redirect(url_for('login'))
-    return render_template('chat.html')
+    if not session.get("logged_in"):
+        return redirect("/")
+    return render_template("chat.html")
 
 @socketio.on('verify_password')
-def verify_password(data):
+def verify(data):
     if data['password'] == CHAT_PASSWORD:
         emit('password_status', {'status': 'ok'})
     else:
         emit('password_status', {'status': 'wrong'})
 
 @socketio.on('send_message')
-def handle_message(data):
-    if data:
-        emit('receive_message', data, broadcast=True)
+def handle_msg(data):
+    emit('receive_message', data, broadcast=True)
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    socketio.run(app, host='0.0.0.0', port=port, allow_unsafe_werkzeug=True) # <- bas ye add hua
+if __name__ == "__main__":
+    socketio.run(app, host="0.0.0.0", port=5000)
