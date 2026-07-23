@@ -7,7 +7,7 @@ import os
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = 'ghost_secret_key_123'
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
 
 # Yaha apne password daal de
 APP_PASSWORD = "1234"
@@ -31,15 +31,4 @@ def chat():
 
 @socketio.on('verify_password')
 def verify_password(data):
-    if data['password'] == CHAT_PASSWORD:
-        emit('password_status', {'status': 'ok'})
-    else:
-        emit('password_status', {'status': 'wrong'})
-
-@socketio.on('send_message')
-def handle_message(data):
-    emit('receive_message', data, broadcast=True)
-
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    socketio.run(app, host='0.0.0.0', port=port)
+    if data
