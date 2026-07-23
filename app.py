@@ -1,11 +1,13 @@
 from flask import Flask, render_template, request, session, redirect, url_for
 from flask_socketio import SocketIO, emit
+import eventlet
+eventlet.monkey_patch()
 
 app = Flask(__name__)
-app.secret_key = "ghostsecret12345"  # session ke liye zaruri hai
+app.secret_key = "ghostsecret12345"  # session ke liye zaruri
 socketio = SocketIO(app, async_mode='eventlet')
 
-# Yaha apne password change kar lena
+# Yaha password change kar sakte ho
 APP_PASSWORD = "1234"
 CHAT_PASSWORD = "abcd"
 
@@ -23,14 +25,3 @@ def login():
 @app.route("/chat")
 def chat():
     if not session.get("logged_in"):
-        return redirect(url_for('login'))
-    return render_template("chat.html")
-
-@socketio.on('verify_password')
-def verify(data):
-    if data['password'] == CHAT_PASSWORD:
-        emit('password_status', {'status': 'ok'})
-    else:
-        emit('password_status', {'status': 'wrong'})
-
-@socketio.on
