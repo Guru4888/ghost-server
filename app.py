@@ -31,4 +31,15 @@ def chat():
 
 @socketio.on('verify_password')
 def verify_password(data):
-    if data
+    if data['password'] == CHAT_PASSWORD:  # <- yaha : tha
+        emit('password_status', {'status': 'ok'})
+    else:
+        emit('password_status', {'status': 'wrong'})
+
+@socketio.on('send_message')
+def handle_message(data):
+    emit('receive_message', data, broadcast=True)
+
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    socketio.run(app, host='0.0.0.0', port=port)
