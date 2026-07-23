@@ -6,7 +6,7 @@ from flask_socketio import SocketIO, emit
 import os
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'ghost_secret_key_123' 
+app.config['SECRET_KEY'] = 'ghost_secret_key_123'
 socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Yaha apne password daal de
@@ -42,4 +42,4 @@ def handle_message(data):
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
-    socketio.run(app, host='0.0.0.0
+    socketio.run(app, host='0.0.0.0', port=port)
