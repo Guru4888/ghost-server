@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Ghost Chat</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body {background:#0a0a0a; color:#0f0; font-family:Arial; margin:0; padding:10px;}
+        #chat {height:70vh; overflow-y:scroll; border:1px solid #0f0; padding:10px; margin-bottom:10px;}
+        .msg {margin:5px 0; padding:5px; border-bottom:1px dashed #0f0;}
+        input, button {padding:10px; background:#111; color:#0f0; border:1px solid #0f0; width:70%;}
+        button {width:25%;}
+        .fade {animation: fadeout 30s forwards;}
+        @keyframes fadeout {to {opacity:0;}}
+    </style>
+</head>
+<body>
+    <h2>👻 Ghost Chat - 30 sec me gayab</h2>
+    <p>Welcome: <b>{{ username }}</b></p>
+    
+    <input type="password" id="room_password" placeholder="Chat Password">
+    <button onclick="joinRoom()">Join Room</button>
+    
+    <div id="chat"></div>
+    
+    <input type="text" id="message" placeholder="Message likh..." onkeypress="if(event.key=='Enter') sendMessage()">
+    <button onclick="sendMessage()">Send</button>
+
+    <h3>Password Change</h3>
+    <form action="/change_chat_password" method="POST">
+        <input type="password" name="old_password" placeholder="Purana Chat Password" required>
+        <input type="password" name="new_password" placeholder="Naya Chat Password" required>
+        <button type="submit">Change</button>
+    </form>
+
+<script>
+    const socket = io();
+    const room = "main_room";
+    let joined = false;
+
+    function joinRoom() {
+        const pass = document.getElementById('room_password').value;
+        socket.emit('join', {room: room, password: pass});
+        joined = true;
+    }
+
+    function sendMessage() {
+        if(!joined) return alert("Pehle Join Room kar");
+        const msg = document.getElementById('message').value;
+        socket.emit('message', {room: room, text: msg});
+        document.getElementById('message').value = '';
+    }
+
+    socket.on('message', function(data){
+        const chat = document.getElementById('chat');
+        const div = document.createElement('div');
+        div.className = 'msg fade';
+        div.innerHTML = `<b>${data.user}:</b> ${data.text}`;
+        chat.appendChild(div);
+        chat.scrollTop = chat.scrollHeight;
+    });
+
+    socket.on('delete_message', function(data){
+        const msgs = document.querySelectorAll('.msg');
+        msgs.forEach(m => {
+            if(m.innerText.includes(data.text)) m.remove();
+        });
+    });
+
+    socket.on('error', function(data){
+        alert(data.msg);
+    });
+</script>
+</body>
+</html>
