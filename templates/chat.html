@@ -7,48 +7,187 @@
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         * { box-sizing: border-box; }
-        body { background-color: #0d1117; color: #ffffff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        #room-modal, #call-modal, #lock-screen { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: flex; justify-content: center; align-items: center; z-index: 999; }
-        .modal-box { background: #161b22; padding: 25px; border-radius: 12px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.7); border: 1px solid #30363d; width: 90%; max-width: 400px; }
-        #chat-screen { display: flex; width: 95%; max-width: 500px; height: 85vh; background: #161b22; border-radius: 12px; flex-direction: column; border: 1px solid #30363d; box-shadow: 0 4px 25px rgba(0,0,0,0.8); overflow: hidden; }
-        .top-bar { background: #21262d; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; }
+        body {
+            background-color: #0d1117;
+            color: #ffffff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        #room-modal, #call-modal, #lock-screen {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 999;
+        }
+        .modal-box {
+            background: #161b22;
+            padding: 25px;
+            border-radius: 12px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.7);
+            border: 1px solid #30363d;
+            width: 90%;
+            max-width: 400px;
+        }
+
+        #chat-screen {
+            display: flex;
+            width: 95%;
+            max-width: 500px;
+            height: 85vh;
+            background: #161b22;
+            border-radius: 12px;
+            flex-direction: column;
+            border: 1px solid #30363d;
+            box-shadow: 0 4px 25px rgba(0,0,0,0.8);
+            overflow: hidden;
+        }
+
+        .top-bar {
+            background: #21262d;
+            padding: 12px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #30363d;
+        }
         .top-bar h3 { margin: 0; font-size: 1rem; color: #58a6ff; }
         .call-btns { display: flex; gap: 6px; }
-        .btn-call { padding: 6px 10px; border-radius: 6px; border: none; font-size: 0.8rem; font-weight: bold; cursor: pointer; color: white; }
+        .btn-call {
+            padding: 6px 10px;
+            border-radius: 6px;
+            border: none;
+            font-size: 0.8rem;
+            font-weight: bold;
+            cursor: pointer;
+            color: white;
+        }
         .btn-audio { background-color: #238636; }
         .btn-video { background-color: #1f6feb; }
         .btn-lock { background-color: #da3633; }
-        #messages { flex-grow: 1; overflow-y: auto; padding: 15px; background: #0d1117; display: flex; flex-direction: column; gap: 10px; }
-        .msg-card { padding: 10px 14px; border-radius: 10px; max-width: 75%; word-wrap: break-word; font-size: 0.95rem; position: relative; transition: opacity 0.5s ease; }
-        .my-msg { background: #1f6feb; color: #ffffff; align-self: flex-end; border-bottom-right-radius: 2px; }
-        .other-msg { background: #21262d; color: #c9d1d9; align-self: flex-start; border-bottom-left-radius: 2px; border: 1px solid #30363d; }
-        .user-id { font-size: 0.75em; color: #8b949e; margin-bottom: 3px; display: block; font-weight: bold; }
-        .timer-tag { font-size: 0.65em; opacity: 0.75; float: right; margin-top: 4px; margin-left: 10px; }
-        .input-box { display: flex; padding: 12px; background: #21262d; gap: 8px; border-top: 1px solid #30363d; }
-        input { width: 100%; padding: 10px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; outline: none; margin-bottom: 10px; }
-        button.btn-send { padding: 10px 18px; background: #238636; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+
+        #messages {
+            flex-grow: 1;
+            overflow-y: auto;
+            padding: 15px;
+            background: #0d1117;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .msg-card {
+            padding: 10px 14px;
+            border-radius: 10px;
+            max-width: 75%;
+            word-wrap: break-word;
+            font-size: 0.95rem;
+            position: relative;
+            transition: opacity 0.5s ease;
+        }
+        .my-msg {
+            background: #1f6feb;
+            color: #ffffff;
+            align-self: flex-end;
+            border-bottom-right-radius: 2px;
+        }
+        .other-msg {
+            background: #21262d;
+            color: #c9d1d9;
+            align-self: flex-start;
+            border-bottom-left-radius: 2px;
+            border: 1px solid #30363d;
+        }
+        .user-id {
+            font-size: 0.75em;
+            color: #8b949e;
+            margin-bottom: 3px;
+            display: block;
+            font-weight: bold;
+        }
+        .timer-tag {
+            font-size: 0.65em;
+            opacity: 0.75;
+            float: right;
+            margin-top: 4px;
+            margin-left: 10px;
+        }
+
+        .input-box {
+            display: flex;
+            padding: 12px;
+            background: #21262d;
+            gap: 8px;
+            border-top: 1px solid #30363d;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            background: #0d1117;
+            border: 1px solid #30363d;
+            color: white;
+            border-radius: 6px;
+            outline: none;
+            margin-bottom: 10px;
+        }
+
+        button.btn-send {
+            padding: 10px 18px;
+            background: #238636;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
+
+    <!-- Access Reserved Room Modal (CLEAN & AUTOFILL BLOCKED) -->
     <div id="room-modal">
         <div class="modal-box">
             <h2>🔑 Access Reserved Room</h2>
             <p style="font-size: 0.8rem; color: #8b949e;">Apne reserved room ka name aur password daalein:</p>
-            <input type="text" id="room-name" placeholder="Reserved Room Name" autocomplete="off">
-            <input type="password" id="room-pass" placeholder="Room Secret Password" autocomplete="new-password">
-            <button class="btn-send" style="width: 100%; margin-top: 5px;" onclick="joinReservedRoom()">Enter Reserved Room</button>
+            
+            <form onsubmit="return false;" autocomplete="off" action="/noop">
+                <!-- Random dummy inputs to block browser memory -->
+                <input type="text" style="display:none;" name="fake_user_field"/>
+                <input type="password" style="display:none;" name="fake_pass_field"/>
+
+                <input type="text" id="room-name" name="ghost_room_x99" placeholder="Reserved Room Name" 
+                       autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                       aria-autocomplete="none">
+                       
+                <input type="password" id="room-pass" name="ghost_pass_y88" placeholder="Room Secret Password" 
+                       autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false">
+                
+                <button class="btn-send" style="width: 100%; margin-top: 5px;" onclick="joinReservedRoom()">Enter Reserved Room</button>
+            </form>
         </div>
     </div>
 
+    <!-- Secret Lock Screen Overlay -->
     <div id="lock-screen" style="display: none;">
         <div class="modal-box">
             <h2>🔒 Vault Locked</h2>
-            <p style="color: #8b949e; font-size: 0.85rem; margin-bottom: 15px;">Enter PIN to Unlock Chat</p>
-            <input type="password" id="unlock-pass" placeholder="Enter PIN">
-            <button class="btn-send" style="width: 100%; margin-top:8px;" onclick="unlockChat()">Unlock Tunnel</button>
+            <p style="color: #8b949e; font-size: 0.85rem; margin-bottom: 15px;">Enter Key to Unlock Chat</p>
+            <form onsubmit="return false;" autocomplete="off">
+                <input type="password" id="unlock-pass" placeholder="Enter PIN" autocomplete="new-password">
+                <button class="btn-send" style="width: 100%; margin-top:8px;" onclick="unlockChat()">Unlock Tunnel</button>
+            </form>
         </div>
     </div>
 
+    <!-- Call Overlay Popup -->
     <div id="call-modal" style="display: none;">
         <div class="modal-box">
             <h3 id="call-title">🔒 Encrypted Call</h3>
@@ -57,6 +196,7 @@
         </div>
     </div>
 
+    <!-- Main Chat Window -->
     <div id="chat-screen">
         <div class="top-bar">
             <div>
@@ -69,9 +209,13 @@
                 <button class="btn-call btn-lock" onclick="lockChat()">🔒 Lock</button>
             </div>
         </div>
+
         <div id="messages"></div>
+
         <div class="input-box">
-            <input type="text" id="msg-input" placeholder="Type a message..." autocomplete="off" onkeypress="if(event.key==='Enter') sendMessage()" style="margin-bottom:0;">
+            <input type="text" id="msg-input" placeholder="Type a message..." 
+                   autocomplete="off" autocorrect="off" spellcheck="false" 
+                   onkeypress="if(event.key==='Enter') sendMessage()" style="margin-bottom:0;">
             <button class="btn-send" onclick="sendMessage()">Send</button>
         </div>
     </div>
@@ -82,9 +226,26 @@
         let currentRoom = "";
         let isCallActive = false;
 
+        let isInitialized = false;
+        setTimeout(() => { isInitialized = true; }, 2000);
+
+        // CLEAR BROWSERS SAVED AUTOFILL ON PAGE LOAD
+        window.onload = function() {
+            document.getElementById('room-name').value = '';
+            document.getElementById('room-pass').value = '';
+        };
+
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'hidden' && isInitialized && !isCallActive) {
+                if(socket) socket.disconnect();
+                window.location.href = "/logout";
+            }
+        });
+
         function joinReservedRoom() {
             const room = document.getElementById('room-name').value.trim();
             const pass = document.getElementById('room-pass').value.trim();
+
             if (room !== "" && pass !== "") {
                 currentRoom = room + "_" + pass;
                 socket.emit('join_room', { room: currentRoom, user: myAgentID });
@@ -95,20 +256,30 @@
             }
         }
 
-        function lockChat() { document.getElementById('lock-screen').style.display = 'flex'; }
+        function lockChat() {
+            document.getElementById('lock-screen').style.display = 'flex';
+        }
+
         function unlockChat() {
             const pass = document.getElementById('unlock-pass').value;
             if (pass === "guru16230") {
                 document.getElementById('lock-screen').style.display = 'none';
                 document.getElementById('unlock-pass').value = "";
-            } else { alert("Incorrect PIN!"); }
+            } else {
+                alert("Incorrect PIN!");
+            }
         }
 
         function sendMessage() {
             const input = document.getElementById('msg-input');
             if (input.value.trim() !== "") {
                 const msgId = 'msg_' + Date.now();
-                socket.emit('send_message', { id: msgId, room: currentRoom, user: myAgentID, msg: input.value });
+                socket.emit('send_message', { 
+                    id: msgId,
+                    room: currentRoom,
+                    user: myAgentID, 
+                    msg: input.value 
+                });
                 input.value = "";
             }
         }
@@ -116,20 +287,36 @@
         function removeMsgElement(msgCard) {
             if (msgCard && msgCard.parentNode) {
                 msgCard.style.opacity = '0';
-                setTimeout(() => { if (msgCard.parentNode) msgCard.parentNode.removeChild(msgCard); }, 500);
+                setTimeout(() => {
+                    if (msgCard.parentNode) msgCard.parentNode.removeChild(msgCard);
+                }, 500);
             }
         }
 
         socket.on('receive_message', (data) => {
             const msgBox = document.getElementById('messages');
             const isMe = data.user === myAgentID;
+            
             const msgCard = document.createElement('div');
             msgCard.id = data.id;
             msgCard.className = `msg-card ${isMe ? 'my-msg' : 'other-msg'}`;
-            msgCard.innerHTML = `<span class="user-id">${data.user}</span><div>${data.msg}</div><span class="timer-tag">🔥 Auto-Shred</span>`;
+            msgCard.innerHTML = `
+                <span class="user-id">${data.user}</span>
+                <div>${data.msg}</div>
+                <span class="timer-tag">🔥 Auto-Shred</span>
+            `;
+            
             msgBox.appendChild(msgCard);
             msgBox.scrollTop = msgBox.scrollHeight;
-            setTimeout(() => { removeMsgElement(msgCard); }, 60000);
+
+            const seenTimer = setTimeout(() => {
+                removeMsgElement(msgCard);
+            }, 60000);
+
+            setTimeout(() => {
+                clearTimeout(seenTimer);
+                removeMsgElement(msgCard);
+            }, 10800000);
         });
 
         function startCall(type) {
@@ -137,6 +324,7 @@
             document.getElementById('call-title').innerText = "🔒 " + type;
             document.getElementById('call-modal').style.display = 'flex';
         }
+
         function endCall() {
             isCallActive = false;
             document.getElementById('call-modal').style.display = 'none';
