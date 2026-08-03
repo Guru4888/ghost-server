@@ -127,31 +127,16 @@
             gap: 8px;
             border-top: 1px solid #30363d;
         }
-        
-        .input-wrapper {
-            position: relative;
-            width: 100%;
-            margin-bottom: 10px;
-        }
 
         input {
             width: 100%;
-            padding: 10px 35px 10px 10px;
+            padding: 10px;
             background: #0d1117;
             border: 1px solid #30363d;
             color: white;
             border-radius: 6px;
             outline: none;
-        }
-
-        .toggle-eye {
-            position: absolute;
-            right: 10px;
-            top: 50%;
-            transform: translateY(-50%);
-            cursor: pointer;
-            font-size: 0.9rem;
-            user-select: none;
+            margin-bottom: 10px;
         }
 
         button.btn-send {
@@ -167,29 +152,23 @@
 </head>
 <body>
 
-    <!-- Access Reserved Room Modal (ZERO AUTO-FILL / ZERO HISTORY) -->
+    <!-- Access Reserved Room Modal (CLEAN & AUTOFILL BLOCKED) -->
     <div id="room-modal">
         <div class="modal-box">
             <h2>🔑 Access Reserved Room</h2>
             <p style="font-size: 0.8rem; color: #8b949e;">Apne reserved room ka name aur password daalein:</p>
             
-            <form onsubmit="return false;" autocomplete="off">
-                <!-- Trick inputs -->
-                <input type="text" style="display:none" name="fakeusernameremembered"/>
-                <input type="password" style="display:none" name="fakepasswordremembered"/>
+            <form onsubmit="return false;" autocomplete="off" action="/noop">
+                <!-- Random dummy inputs to block browser memory -->
+                <input type="text" style="display:none;" name="fake_user_field"/>
+                <input type="password" style="display:none;" name="fake_pass_field"/>
 
-                <!-- BOTH INPUTS ARE TYPE=PASSWORD TO TOTALLY BLOCK CHROME HISTORY -->
-                <div class="input-wrapper">
-                    <input type="password" id="room-name" placeholder="Reserved Room Name" 
-                           autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false">
-                    <span class="toggle-eye" onclick="toggleVisibility('room-name', this)">👁️</span>
-                </div>
+                <input type="text" id="room-name" name="ghost_room_x99" placeholder="Reserved Room Name" 
+                       autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
+                       aria-autocomplete="none">
                        
-                <div class="input-wrapper">
-                    <input type="password" id="room-pass" placeholder="Room Secret Password" 
-                           autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false">
-                    <span class="toggle-eye" onclick="toggleVisibility('room-pass', this)">👁️</span>
-                </div>
+                <input type="password" id="room-pass" name="ghost_pass_y88" placeholder="Room Secret Password" 
+                       autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false">
                 
                 <button class="btn-send" style="width: 100%; margin-top: 5px;" onclick="joinReservedRoom()">Enter Reserved Room</button>
             </form>
@@ -250,24 +229,18 @@
         let isInitialized = false;
         setTimeout(() => { isInitialized = true; }, 2000);
 
+        // CLEAR BROWSERS SAVED AUTOFILL ON PAGE LOAD
+        window.onload = function() {
+            document.getElementById('room-name').value = '';
+            document.getElementById('room-pass').value = '';
+        };
+
         document.addEventListener('visibilitychange', function() {
             if (document.visibilityState === 'hidden' && isInitialized && !isCallActive) {
                 if(socket) socket.disconnect();
                 window.location.href = "/logout";
             }
         });
-
-        // EYE ICON TO SHOW/HIDE TEXT SAFELY
-        function toggleVisibility(inputId, btn) {
-            const input = document.getElementById(inputId);
-            if (input.type === "password") {
-                input.type = "text";
-                btn.innerText = "🙈";
-            } else {
-                input.type = "password";
-                btn.innerText = "👁️";
-            }
-        }
 
         function joinReservedRoom() {
             const room = document.getElementById('room-name').value.trim();
