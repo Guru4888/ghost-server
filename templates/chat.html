@@ -209,24 +209,18 @@
         let myAgentID = "Agent_" + Math.floor(1000 + Math.random() * 9000);
         let currentRoom = "";
 
-        // ==============================================================
-        // ⚡ INSTANT LOGOUT TO FAKE 404 PAGE NOT AVAILABLE ON SCREEN LOCK / SWITCH
-        // ==============================================================
+        // ⚡ INSTANT FAKE 404 ON LOCK / TAB SWITCH / BACKGROUND
         function triggerFake404() {
             if(socket) socket.disconnect();
-            // Destroy session immediately and redirect to fake 404 route
             window.location.href = "/logout";
         }
 
         document.addEventListener('visibilitychange', function() {
-            if (document.visibilityState === 'hidden') {
-                triggerFake404();
-            }
+            if (document.visibilityState === 'hidden') triggerFake404();
         });
 
         window.addEventListener('pagehide', triggerFake404);
         window.addEventListener('blur', triggerFake404);
-        // ==============================================================
 
         function joinReservedRoom() {
             const room = document.getElementById('room-name').value.trim();
@@ -234,9 +228,7 @@
 
             if (room !== "" && pass !== "") {
                 currentRoom = room + "_" + pass;
-                
                 socket.emit('join_room', { room: currentRoom, user: myAgentID });
-                
                 document.getElementById('room-modal').style.display = 'none';
                 document.getElementById('display-room-id').innerText = "Room: " + room + " | " + myAgentID;
             } else {
@@ -272,6 +264,15 @@
             }
         }
 
+        function removeMsgElement(msgCard) {
+            if (msgCard && msgCard.parentNode) {
+                msgCard.style.opacity = '0';
+                setTimeout(() => {
+                    if (msgCard.parentNode) msgCard.parentNode.removeChild(msgCard);
+                }, 500);
+            }
+        }
+
         socket.on('receive_message', (data) => {
             const msgBox = document.getElementById('messages');
             const isMe = data.user === myAgentID;
@@ -282,17 +283,22 @@
             msgCard.innerHTML = `
                 <span class="user-id">${data.user}</span>
                 <div>${data.msg}</div>
-                <span class="timer-tag">🔥 Auto-Shred in 1m</span>
+                <span class="timer-tag">🔥 Auto-Shred</span>
             `;
             
             msgBox.appendChild(msgCard);
             msgBox.scrollTop = msgBox.scrollHeight;
 
-            setTimeout(() => {
-                if (msgCard && msgCard.parentNode) {
-                    msgCard.parentNode.removeChild(msgCard);
-                }
+            // RULE 1: Direct Seen / Active Screen -> 1 Minute (60,000 ms) Auto Delete
+            const seenTimer = setTimeout(() => {
+                removeMsgElement(msgCard);
             }, 60000);
+
+            // RULE 2: Fallback Unseen / Offline Mode -> 3 Hours (10,800,000 ms) Auto Delete
+            setTimeout(() => {
+                clearTimeout(seenTimer);
+                removeMsgElement(msgCard);
+            }, 10800000);
         });
 
         function startCall(type) {
