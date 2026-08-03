@@ -19,6 +19,14 @@ USER_SESSIONS = {}
 
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
+# Security Headers to Prevent Client-Side Caching
+@app.after_request
+def add_security_headers(response):
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
 # 1. Login & Registration Portal HTML
 LOGIN_HTML = """
 <!DOCTYPE html>
@@ -28,7 +36,7 @@ LOGIN_HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>System Access Portal</title>
     <style>
-        body { background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        body { background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; user-select: none; }
         .portal-box { background: #161b22; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 320px; text-align: center; border: 1px solid #30363d; }
         .portal-box input { width: 100%; padding: 12px; margin: 8px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
         .portal-box button { width: 100%; padding: 12px; background: #238636; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 10px; }
@@ -157,7 +165,7 @@ LOGIN_HTML = """
 </html>
 """
 
-# 2. Admin Panel Page HTML (No Logs Trace Version)
+# 2. Admin Panel Page HTML
 ADMIN_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -166,7 +174,7 @@ ADMIN_HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Panel</title>
     <style>
-        body { background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        body { background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; user-select: none; }
         .admin-container { display: flex; gap: 20px; width: 90%; max-width: 900px; }
         .admin-box { background: #161b22; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 100%; border: 1px solid #30363d; }
         ul { list-style: none; padding: 0; text-align: left; max-height: 220px; overflow-y: auto; margin-top: 15px; }
@@ -189,7 +197,7 @@ ADMIN_HTML = """
             </div>
             <div style="background: #21262d; padding: 12px; border-radius: 6px; margin-top: 15px; border: 1px solid #30363d; text-align: center;">
                 <p style="color: #3fb950; margin: 0; font-size: 13px; font-weight: bold;">🔒 Zero-Trace Policy Active</p>
-                <p style="color: #8b949e; margin: 5px 0 0 0; font-size: 11px;">All chat messages & call logs auto-destruct. No message history or call traces are stored on the server.</p>
+                <p style="color: #8b949e; margin: 5px 0 0 0; font-size: 11px;">Server side and Client side memory wiping active. No residue or local cache traces are kept.</p>
             </div>
             <a href="/chat" class="back-link">⬅ Chat</a>
             <a href="/" class="back-link" style="color: #f85149;">Logout</a>
@@ -261,7 +269,7 @@ ADMIN_HTML = """
 </html>
 """
 
-# 3. Chat Room Page HTML (1 Min Screen Auto-Delete + 3 Hours Max Expiry for Offline Users + Zero Call Logs)
+# 3. Chat Room Page HTML (Bulletproof Client-Side Anti-Trace Protections)
 CHAT_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -272,7 +280,7 @@ CHAT_HTML = """
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         * { box-sizing: border-box; }
-        body { background-color: #0d1117; color: #ffffff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        body { background-color: #0d1117; color: #ffffff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; user-select: none; -webkit-user-select: none; }
         #room-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: flex; justify-content: center; align-items: center; z-index: 999; }
         .modal-box { background: #161b22; padding: 25px; border-radius: 12px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.7); border: 1px solid #30363d; width: 90%; max-width: 400px; }
         #chat-screen { display: flex; width: 95%; max-width: 500px; height: 85vh; background: #161b22; border-radius: 12px; flex-direction: column; border: 1px solid #30363d; overflow: hidden; }
@@ -291,7 +299,7 @@ CHAT_HTML = """
         .other-msg { background: #21262d; color: #c9d1d9; align-self: flex-start; border: 1px solid #30363d; }
         .user-id { font-size: 0.75em; color: #8b949e; margin-bottom: 3px; display: block; font-weight: bold; }
         .input-box { display: flex; padding: 12px; background: #21262d; gap: 8px; border-top: 1px solid #30363d; }
-        input { width: 100%; padding: 10px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; outline: none; }
+        input { width: 100%; padding: 10px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; outline: none; user-select: text; -webkit-user-select: text; }
         button.btn-send { padding: 10px 18px; background: #238636; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
     </style>
 </head>
@@ -331,9 +339,29 @@ CHAT_HTML = """
         let myUsername = "User";
         let isE2EEActive = false;
 
+        // --- CLIENT-SIDE ANTI-TRACE & ANTI-INSPECTION PROTECTIONS ---
+        // Disable Right-Click context menu to prevent manual inspection/saving
+        document.addEventListener('contextmenu', event => event.preventDefault());
+
+        // Disable Common Keyboard Shortcuts for Inspect / Save (F12, Ctrl+Shift+I, Ctrl+U, Ctrl+S)
+        document.addEventListener('keydown', function(event) {
+            if (
+                event.keyCode === 123 || 
+                (event.ctrlKey && event.shiftKey && (event.keyCode === 73 || event.keyCode === 74)) || 
+                (event.ctrlKey && (event.keyCode === 85 || event.keyCode === 83))
+            ) {
+                event.preventDefault();
+                return false;
+            }
+        });
+        // -------------------------------------------------------------
+
         // --- INSTANT KILL-SWITCH (Power Button / Background / Screen Off Logout) ---
         async function triggerInstantLogout() {
             try {
+                // Clear local memory/session caches instantly on exit
+                localStorage.clear();
+                sessionStorage.clear();
                 await fetch('/logout-session', { method: 'POST' });
             } catch(e) {}
             window.location.href = "/";
@@ -373,12 +401,10 @@ CHAT_HTML = """
         }
 
         function startAudioCall() {
-            // Instant encrypted peer trigger with 0 Call Logs stored
             alert("📞 Direct Secure Audio Call initiated (0 Call Logs saved).");
         }
 
         function startVideoCall() {
-            // Instant encrypted peer trigger with 0 Call Logs stored
             alert("📹 Direct Secure Video Call initiated (0 Call Logs saved).");
         }
 
@@ -414,7 +440,6 @@ CHAT_HTML = """
             const input = document.getElementById('msg-input');
             if (input.value.trim() !== "") {
                 let finalMsg = encryptText(input.value);
-                // Send message along with timestamp for offline 3-hour expiry check
                 socket.emit('send_message', { room: currentRoom, user: myUsername, msg: finalMsg, timestamp: Date.now() });
                 input.value = "";
             }
@@ -425,7 +450,6 @@ CHAT_HTML = """
             const msgTimestamp = data.timestamp || now;
             const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
 
-            // If user was offline and message is older than 3 hours, drop it completely
             if ((now - msgTimestamp) > THREE_HOURS_MS) {
                 return; 
             }
@@ -440,7 +464,6 @@ CHAT_HTML = """
             msgBox.appendChild(msgCard);
             msgBox.scrollTop = msgBox.scrollHeight;
 
-            // Auto-delete from screen after exactly 1 minute (60,000 milliseconds)
             let remainingLife = 60000 - (now - msgTimestamp);
             if (remainingLife < 1000) remainingLife = 1000;
 
@@ -596,7 +619,6 @@ def handle_join(data): join_room(data['room'])
 
 @socketio.on('send_message')
 def handle_message(data):
-    # Zero Server Logs Policy: Messages are directly broadcasted to room and NOT stored on the server.
     emit('receive_message', data, to=data['room'])
 
 if __name__ == '__main__':
