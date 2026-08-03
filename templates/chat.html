@@ -127,18 +127,16 @@
             gap: 8px;
             border-top: 1px solid #30363d;
         }
-
         input {
-            width: 100%;
+            flex-grow: 1;
             padding: 10px;
             background: #0d1117;
             border: 1px solid #30363d;
             color: white;
             border-radius: 6px;
             outline: none;
-            margin-bottom: 10px;
+            margin-bottom: 8px;
         }
-
         button.btn-send {
             padding: 10px 18px;
             background: #238636;
@@ -152,22 +150,20 @@
 </head>
 <body>
 
-    <!-- Access Reserved Room Modal (CLEAN & AUTOFILL BLOCKED) -->
+    <!-- Access Reserved Room Modal -->
     <div id="room-modal">
         <div class="modal-box">
             <h2>🔑 Access Reserved Room</h2>
             <p style="font-size: 0.8rem; color: #8b949e;">Apne reserved room ka name aur password daalein:</p>
             
-            <form onsubmit="return false;" autocomplete="off" action="/noop">
-                <!-- Random dummy inputs to block browser memory -->
-                <input type="text" style="display:none;" name="fake_user_field"/>
-                <input type="password" style="display:none;" name="fake_pass_field"/>
+            <form onsubmit="return false;" autocomplete="off">
+                <input type="text" style="display:none" name="fakeusernameremembered"/>
+                <input type="password" style="display:none" name="fakepasswordremembered"/>
 
-                <input type="text" id="room-name" name="ghost_room_x99" placeholder="Reserved Room Name" 
-                       autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-                       aria-autocomplete="none">
+                <input type="text" id="room-name" placeholder="Reserved Room Name (e.g. SecretVault)" 
+                       autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false">
                        
-                <input type="password" id="room-pass" name="ghost_pass_y88" placeholder="Room Secret Password" 
+                <input type="password" id="room-pass" placeholder="Room Secret Password" 
                        autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false">
                 
                 <button class="btn-send" style="width: 100%; margin-top: 5px;" onclick="joinReservedRoom()">Enter Reserved Room</button>
@@ -224,18 +220,14 @@
         const socket = io();
         let myAgentID = "Agent_" + Math.floor(1000 + Math.random() * 9000);
         let currentRoom = "";
-        let isCallActive = false;
+        let isCallActive = false; // Flag to check active Audio/Video Call status
 
         let isInitialized = false;
         setTimeout(() => { isInitialized = true; }, 2000);
 
-        // CLEAR BROWSERS SAVED AUTOFILL ON PAGE LOAD
-        window.onload = function() {
-            document.getElementById('room-name').value = '';
-            document.getElementById('room-pass').value = '';
-        };
-
+        // AUTO LOGOUT / 404 LOGIC WITH CALL EXCEPTION
         document.addEventListener('visibilitychange', function() {
+            // Agar CALL CHAL RAHI HAI toh background hone par logout NAHI hoga
             if (document.visibilityState === 'hidden' && isInitialized && !isCallActive) {
                 if(socket) socket.disconnect();
                 window.location.href = "/logout";
@@ -309,24 +301,28 @@
             msgBox.appendChild(msgCard);
             msgBox.scrollTop = msgBox.scrollHeight;
 
+            // RULE 1: Direct Seen -> 1 Minute (60s) Auto Delete
             const seenTimer = setTimeout(() => {
                 removeMsgElement(msgCard);
             }, 60000);
 
+            // RULE 2: Non-Seen / Offline -> 3 Hours Auto Delete
             setTimeout(() => {
                 clearTimeout(seenTimer);
                 removeMsgElement(msgCard);
             }, 10800000);
         });
 
+        // START CALL LOGIC (AUDIO / VIDEO)
         function startCall(type) {
-            isCallActive = true;
+            isCallActive = true; // Set active call flag to true
             document.getElementById('call-title').innerText = "🔒 " + type;
             document.getElementById('call-modal').style.display = 'flex';
         }
 
+        // END CALL LOGIC
         function endCall() {
-            isCallActive = false;
+            isCallActive = false; // Reset call flag
             document.getElementById('call-modal').style.display = 'none';
         }
     </script>
