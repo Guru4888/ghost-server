@@ -150,14 +150,13 @@
 </head>
 <body>
 
-    <!-- Access Reserved Room Modal (AUTOFILL COMPLETELY DISABLED) -->
+    <!-- Access Reserved Room Modal -->
     <div id="room-modal">
         <div class="modal-box">
             <h2>🔑 Access Reserved Room</h2>
             <p style="font-size: 0.8rem; color: #8b949e;">Apne reserved room ka name aur password daalein:</p>
             
             <form onsubmit="return false;" autocomplete="off">
-                <!-- Fake inputs to trick browser password managers -->
                 <input type="text" style="display:none" name="fakeusernameremembered"/>
                 <input type="password" style="display:none" name="fakepasswordremembered"/>
 
@@ -221,12 +220,15 @@
         const socket = io();
         let myAgentID = "Agent_" + Math.floor(1000 + Math.random() * 9000);
         let currentRoom = "";
+        let isCallActive = false; // Flag to check active Audio/Video Call status
 
         let isInitialized = false;
         setTimeout(() => { isInitialized = true; }, 2000);
 
+        // AUTO LOGOUT / 404 LOGIC WITH CALL EXCEPTION
         document.addEventListener('visibilitychange', function() {
-            if (document.visibilityState === 'hidden' && isInitialized) {
+            // Agar CALL CHAL RAHI HAI toh background hone par logout NAHI hoga
+            if (document.visibilityState === 'hidden' && isInitialized && !isCallActive) {
                 if(socket) socket.disconnect();
                 window.location.href = "/logout";
             }
@@ -311,12 +313,16 @@
             }, 10800000);
         });
 
+        // START CALL LOGIC (AUDIO / VIDEO)
         function startCall(type) {
+            isCallActive = true; // Set active call flag to true
             document.getElementById('call-title').innerText = "🔒 " + type;
             document.getElementById('call-modal').style.display = 'flex';
         }
 
+        // END CALL LOGIC
         function endCall() {
+            isCallActive = false; // Reset call flag
             document.getElementById('call-modal').style.display = 'none';
         }
     </script>
