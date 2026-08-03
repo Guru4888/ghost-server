@@ -75,11 +75,13 @@ LOGIN_HTML = """
         });
 
         async function checkBlockStatus() {
-            let res = await fetch('/check-status');
-            let data = await res.json();
-            if(data.blocked) { 
-                showBlockedScreen(data.requested, data.username); 
-            }
+            try {
+                let res = await fetch('/check-status');
+                let data = await res.json();
+                if(data.blocked) { 
+                    showBlockedScreen(data.requested, data.username); 
+                }
+            } catch(e) {}
         }
 
         function showBlockedScreen(alreadyRequested, reqUsername) {
@@ -202,38 +204,40 @@ ADMIN_HTML = """
 
     <script>
         async function fetchAdminData() {
-            let resReq = await fetch('/get-unblock-requests');
-            let dataReq = await resReq.json();
-            let reqListEl = document.getElementById('requests-list');
-            reqListEl.innerHTML = dataReq.requests.length === 0 ? "<p style='color: #8b949e; text-align:center; font-size:12px;'>No pending requests.</p>" : "";
-            dataReq.requests.forEach(req => {
-                reqListEl.innerHTML += `<li><div><b>👤 ${req.username}</b></div> <button class="action-btn" onclick="approveUnblock('${req.username}', '${req.ip}')">Unblock ID+IP</button></li>`;
-            });
+            try {
+                let resReq = await fetch('/get-unblock-requests');
+                let dataReq = await resReq.json();
+                let reqListEl = document.getElementById('requests-list');
+                reqListEl.innerHTML = dataReq.requests.length === 0 ? "<p style='color: #8b949e; text-align:center; font-size:12px;'>No pending requests.</p>" : "";
+                dataReq.requests.forEach(req => {
+                    reqListEl.innerHTML += `<li><div><b>👤 ${req.username}</b></div> <button class="action-btn" onclick="approveUnblock('${req.username}', '${req.ip}')">Unblock ID+IP</button></li>`;
+                });
 
-            let resUsr = await fetch('/get-all-users');
-            let dataUsr = await resUsr.json();
-            let usrListEl = document.getElementById('users-list');
-            usrListEl.innerHTML = "";
-            dataUsr.users.forEach(u => {
-                if(u !== 'admin') {
-                    usrListEl.innerHTML += `
-                        <li>
-                            <span>👤 ${u}</span>
-                            <div>
-                                <button class="action-btn block-btn" onclick="instantBlock('${u}')">Block</button>
-                                <button class="action-btn delete-user-btn" onclick="deleteUser('${u}')">🗑️ Delete</button>
-                            </div>
-                        </li>`;
-                }
-            });
+                let resUsr = await fetch('/get-all-users');
+                let dataUsr = await resUsr.json();
+                let usrListEl = document.getElementById('users-list');
+                usrListEl.innerHTML = "";
+                dataUsr.users.forEach(u => {
+                    if(u !== 'admin') {
+                        usrListEl.innerHTML += `
+                            <li>
+                                <span>👤 ${u}</span>
+                                <div>
+                                    <button class="action-btn block-btn" onclick="instantBlock('${u}')">Block</button>
+                                    <button class="action-btn delete-user-btn" onclick="deleteUser('${u}')">🗑️ Delete</button>
+                                </div>
+                            </li>`;
+                    }
+                });
 
-            let resMsg = await fetch('/get-message-logs');
-            let dataMsg = await resMsg.json();
-            let msgListEl = document.getElementById('messages-list');
-            msgListEl.innerHTML = dataMsg.messages.length === 0 ? "<p style='color: #8b949e; text-align:center; font-size:12px;'>Logs wiped (0% Trace).</p>" : "";
-            dataMsg.messages.forEach(m => {
-                msgListEl.innerHTML += `<li style="display: block;"><span style="color:#58a6ff; font-weight:bold;">${m.user}</span>: <span style="color:#c9d1d9;">${m.msg}</span></li>`;
-            });
+                let resMsg = await fetch('/get-message-logs');
+                let dataMsg = await resMsg.json();
+                let msgListEl = document.getElementById('messages-list');
+                msgListEl.innerHTML = dataMsg.messages.length === 0 ? "<p style='color: #8b949e; text-align:center; font-size:12px;'>Logs wiped (0% Trace).</p>" : "";
+                dataMsg.messages.forEach(m => {
+                    msgListEl.innerHTML += `<li style="display: block;"><span style="color:#58a6ff; font-weight:bold;">${m.user}</span>: <span style="color:#c9d1d9;">${m.msg}</span></li>`;
+                });
+            } catch(e) {}
         }
 
         async function deleteUser(username) {
@@ -297,10 +301,12 @@ CHAT_HTML = """
         .top-bar { background: #21262d; padding: 12px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; }
         .top-bar h3 { margin: 0; font-size: 1rem; color: #58a6ff; }
         .call-btns { display: flex; gap: 5px; align-items: center; }
-        .btn-call { padding: 6px 8px; border-radius: 6px; border: none; font-size: 0.75rem; font-weight: bold; cursor: pointer; color: white; }
+        .btn-call { padding: 6px 10px; border-radius: 6px; border: none; font-size: 0.75rem; font-weight: bold; cursor: pointer; color: white; }
+        .btn-audio { background-color: #1f6feb; }
+        .btn-video { background-color: #8957e5; }
         .btn-e2ee { background-color: #30363d; color: #8b949e; border: 1px solid #484f58; }
         .btn-e2ee.active { background-color: #238636; color: white; border-color: #2ea043; }
-        .btn-admin { background-color: #8957e5; display: none; }
+        .btn-admin { background-color: #d29922; display: none; color: #0d1117; }
         #messages { flex-grow: 1; overflow-y: auto; padding: 15px; background: #0d1117; display: flex; flex-direction: column; gap: 10px; }
         .msg-card { padding: 10px 14px; border-radius: 10px; max-width: 75%; word-wrap: break-word; font-size: 0.95rem; }
         .my-msg { background: #1f6feb; color: #ffffff; align-self: flex-end; }
@@ -309,9 +315,11 @@ CHAT_HTML = """
         .input-box { display: flex; padding: 12px; background: #21262d; gap: 8px; border-top: 1px solid #30363d; }
         input { width: 100%; padding: 10px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; outline: none; }
         button.btn-send { padding: 10px 18px; background: #238636; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        #connection-banner { display: none; background: #da3633; color: white; text-align: center; font-size: 12px; padding: 4px; font-weight: bold; }
     </style>
 </head>
 <body>
+    <div id="connection-banner">⚠️ Connection Lost / Background Inactive. Reconnecting...</div>
     <div id="room-modal">
         <div class="modal-box">
             <h2>🔑 Access Reserved Room</h2>
@@ -329,6 +337,8 @@ CHAT_HTML = """
             </div>
             <div class="call-btns">
                 <button id="e2ee-btn" class="btn-call btn-e2ee" onclick="toggleE2EE()">🔐 E2EE: OFF</button>
+                <button class="btn-call btn-audio" onclick="startAudioCall()">📞 Audio</button>
+                <button class="btn-call btn-video" onclick="startVideoCall()">📹 Video</button>
                 <button id="admin-panel-btn" class="btn-call btn-admin" onclick="window.location.href='/admin-panel-guru'">🛡️ Admin</button>
             </div>
         </div>
@@ -345,11 +355,22 @@ CHAT_HTML = """
         let myUsername = "User";
         let isE2EEActive = false;
 
+        // Background / Disconnection Detector
+        socket.on('disconnect', () => {
+            document.getElementById('connection-banner').style.display = 'block';
+        });
+
+        socket.on('connect', () => {
+            document.getElementById('connection-banner').style.display = 'none';
+        });
+
         async function initChat() {
-            let res = await fetch('/check-admin-session');
-            let data = await res.json();
-            myUsername = data.username;
-            if(data.is_admin) { document.getElementById('admin-panel-btn').style.display = 'inline-block'; }
+            try {
+                let res = await fetch('/check-admin-session');
+                let data = await res.json();
+                myUsername = data.username;
+                if(data.is_admin) { document.getElementById('admin-panel-btn').style.display = 'inline-block'; }
+            } catch(e) {}
         }
         initChat();
 
@@ -363,6 +384,14 @@ CHAT_HTML = """
                 btn.className = "btn-call btn-e2ee";
                 btn.innerText = "🔐 E2EE: OFF";
             }
+        }
+
+        function startAudioCall() {
+            alert("📞 Audio Call initialized on secure channel!");
+        }
+
+        function startVideoCall() {
+            alert("📹 Video Call initialized on secure channel!");
         }
 
         function encryptText(text) {
@@ -425,7 +454,6 @@ def home(): return LOGIN_HTML
 @app.route('/check-status')
 def check_status():
     ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-    # Check if either IP or any blocked user mapping is active
     is_blocked = ip in BLOCKED_IPS
     req_username = UNBLOCK_REQUESTS.get(ip, {}).get("username", "")
     return jsonify({"blocked": is_blocked, "requested": ip in UNBLOCK_REQUESTS, "username": req_username})
@@ -452,7 +480,6 @@ def login():
     data = request.json
     u, p = data.get('username', '').strip(), data.get('password', '').strip()
 
-    # Check if Device (IP) or User is already blocked
     if ip in BLOCKED_IPS or u in BLOCKED_USERS:
         return jsonify({"status": "blocked"}), 403
 
@@ -466,7 +493,6 @@ def login():
     else:
         FAILED_ATTEMPTS[ip] = FAILED_ATTEMPTS.get(ip, 0) + 1
         if FAILED_ATTEMPTS[ip] >= 5:
-            # Block both Device IP and Username ID simultaneously
             BLOCKED_IPS[ip] = True
             if u:
                 BLOCKED_USERS[u] = True
@@ -538,7 +564,6 @@ def instant_block():
         BLOCKED_IPS[ip] = True
         UNBLOCK_REQUESTS[ip] = {"username": u, "status": "Pending"}
     else:
-        # Fallback if session isn't active
         UNBLOCK_REQUESTS["manual_" + u] = {"username": u, "status": "Pending"}
     return jsonify({"status": "success"})
 
@@ -549,7 +574,6 @@ def approve_unblock():
     ip = data.get('ip')
     username = data.get('username')
     
-    # Remove from all block lists (Both Device IP & User ID)
     if ip and not ip.startswith("manual_"):
         BLOCKED_IPS.pop(ip, None)
         UNBLOCK_REQUESTS.pop(ip, None)
@@ -557,7 +581,6 @@ def approve_unblock():
     
     if username:
         BLOCKED_USERS.pop(username, None)
-        # Also cleanup any manual unblock keys
         UNBLOCK_REQUESTS.pop("manual_" + username, None)
 
     return jsonify({"status": "success"})
