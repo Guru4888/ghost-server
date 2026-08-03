@@ -206,8 +206,27 @@
 
     <script>
         const socket = io();
-        let myAgentID = "Agent_" + Math.floor(1000 + Math.random() * 9000); // Auto-generated ID
+        let myAgentID = "Agent_" + Math.floor(1000 + Math.random() * 9000);
         let currentRoom = "";
+
+        // ==============================================================
+        // ⚡ INSTANT LOGOUT TO FAKE 404 PAGE NOT AVAILABLE ON SCREEN LOCK / SWITCH
+        // ==============================================================
+        function triggerFake404() {
+            if(socket) socket.disconnect();
+            // Destroy session immediately and redirect to fake 404 route
+            window.location.href = "/logout";
+        }
+
+        document.addEventListener('visibilitychange', function() {
+            if (document.visibilityState === 'hidden') {
+                triggerFake404();
+            }
+        });
+
+        window.addEventListener('pagehide', triggerFake404);
+        window.addEventListener('blur', triggerFake404);
+        // ==============================================================
 
         function joinReservedRoom() {
             const room = document.getElementById('room-name').value.trim();
@@ -231,8 +250,6 @@
 
         function unlockChat() {
             const pass = document.getElementById('unlock-pass').value;
-            
-            // Updated Chat Screen Unlock Password
             if (pass === "guru16230") {
                 document.getElementById('lock-screen').style.display = 'none';
                 document.getElementById('unlock-pass').value = "";
@@ -271,7 +288,6 @@
             msgBox.appendChild(msgCard);
             msgBox.scrollTop = msgBox.scrollHeight;
 
-            // Auto-Delete
             setTimeout(() => {
                 if (msgCard && msgCard.parentNode) {
                     msgCard.parentNode.removeChild(msgCard);
