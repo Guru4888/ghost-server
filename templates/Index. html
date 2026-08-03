@@ -17,7 +17,11 @@
         .calc-btn.operator { background: #1f6feb; }
 
         /* Main Ghost Portal Style */
-        #ghost-portal { width: 100%; height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; }
+        #ghost-portal { width: 100%; height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; background: #0d1117; }
+        .portal-box { background: #161b22; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 320px; text-align: center; border: 1px solid #30363d; }
+        .portal-box input { width: 100%; padding: 12px; margin: 10px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; }
+        .portal-box button { width: 100%; padding: 12px; background: #238636; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .portal-box button:hover { background: #2ea043; }
     </style>
 </head>
 <body>
@@ -49,22 +53,24 @@
         </div>
     </div>
 
-    <!-- 2. GHOST TUNNEL MAIN APP -->
+    <!-- 2. GHOST TUNNEL MAIN APP (Pehle Hidden Rahegi) -->
     <div id="ghost-portal" class="hidden">
-        <h2>🔒 Ghost Tunnel Portal</h2>
-        <p>Welcome to Secret Tunnel! (App unlocked successfully)</p>
-        <!-- Yahan aap apna Room Name aur Password wala page load karwa sakte ho -->
+        <div class="portal-box">
+            <h2>🔒 Ghost Tunnel</h2>
+            <p style="color: #8b949e; font-size: 14px; margin-bottom: 20px;">Secure Private Connection</p>
+            <input type="text" id="roomName" placeholder="Enter Room Name">
+            <input type="password" id="roomPass" placeholder="Enter Room Password">
+            <button onclick="enterRoom()">Join Secure Room</button>
+        </div>
     </div>
 
     <script>
         let inputSequence = "";
-        // Aapka sequence: C -> 05001193024 -> C -> C -> =
         const targetSequence = "C05001193024CC=";
 
         function pressButton(val) {
             let display = document.getElementById("calc-display");
 
-            // Agar user normal calculation kar raha hai jab tak secret sequence match nahi hui
             if (val === '=') {
                 inputSequence += "=";
                 checkSecret();
@@ -74,22 +80,31 @@
                 checkSecret();
             } else {
                 inputSequence += val;
-                display.innerText = inputSequence.replace(/C/g, ''); // Display se C hide rahega taaki pata na chale
+                display.innerText = inputSequence.replace(/C/g, '');
             }
         }
 
         function checkSecret() {
-            // Agar sequence match ho gayi
             if (inputSequence.includes(targetSequence)) {
                 document.getElementById("calculator-screen").classList.add("hidden");
                 document.getElementById("ghost-portal").classList.remove("hidden");
                 return;
             }
 
-            // Agar sequence bohot lambi ho gayi aur galat ho gayi toh reset kar do
             if (inputSequence.length > 25) {
                 inputSequence = "";
-                document.getElementById("calc-display").innerText = "0";
+                document.getElementById("calculator-screen").classList.remove("hidden");
+            }
+        }
+
+        function enterRoom() {
+            const rName = document.getElementById("roomName").value;
+            const rPass = document.getElementById("roomPass").value;
+            if(rName && rPass) {
+                alert("Connecting to secure room: " + rName);
+                // Yahan aap apna chat/video call page connect kar sakte ho
+            } else {
+                alert("Please enter both Room Name and Password!");
             }
         }
     </script>
