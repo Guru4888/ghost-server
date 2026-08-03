@@ -16,12 +16,12 @@
         .calc-btn:active { background: #30363d; }
         .calc-btn.operator { background: #1f6feb; }
 
-        /* Main Ghost Portal Style */
-        #ghost-portal { width: 100%; height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; background: #0d1117; }
+        /* Common Box Style for Master Login & Room Portal */
         .portal-box { background: #161b22; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 320px; text-align: center; border: 1px solid #30363d; }
         .portal-box input { width: 100%; padding: 12px; margin: 10px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; }
         .portal-box button { width: 100%; padding: 12px; background: #238636; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 10px; }
         .portal-box button:hover { background: #2ea043; }
+        .error-msg { color: #f85149; font-size: 13px; margin-top: 5px; }
     </style>
 </head>
 <body>
@@ -53,20 +53,32 @@
         </div>
     </div>
 
-    <!-- 2. GHOST TUNNEL MAIN APP (Pehle Hidden Rahegi) -->
-    <div id="ghost-portal" class="hidden">
+    <!-- 2. MASTER LOGIN PASSWORD SCREEN (Calculator ke baad khulega) -->
+    <div id="master-login-screen" class="hidden">
         <div class="portal-box">
-            <h2>🔒 Ghost Tunnel</h2>
-            <p style="color: #8b949e; font-size: 14px; margin-bottom: 20px;">Secure Private Connection</p>
+            <h2>🔒 System Access</h2>
+            <p style="color: #8b949e; font-size: 13px; margin-bottom: 15px;">Enter Master App Password</p>
+            <input type="password" id="masterPassword" placeholder="Enter Access Password">
+            <button onclick="verifyMasterPassword()">Access Portal</button>
+            <div id="loginError" class="error-msg"></div>
+        </div>
+    </div>
+
+    <!-- 3. ROOM NAME & ROOM PASSWORD SCREEN (Master Login ke baad) -->
+    <div id="room-portal-screen" class="hidden">
+        <div class="portal-box">
+            <h2>🛡️ Ghost Tunnel Room</h2>
+            <p style="color: #8b949e; font-size: 13px; margin-bottom: 15px;">Connect to Secure Chat</p>
             <input type="text" id="roomName" placeholder="Enter Room Name">
             <input type="password" id="roomPass" placeholder="Enter Room Password">
-            <button onclick="enterRoom()">Join Secure Room</button>
+            <button onclick="enterRoom()">Join Room</button>
         </div>
     </div>
 
     <script>
         let inputSequence = "";
         const targetSequence = "C05001193024CC=";
+        const correctMasterPassword = "123"; // Yahan aap apna jo marzi Master Password rakh sakte ho (Abhi ke liye '123' set hai)
 
         function pressButton(val) {
             let display = document.getElementById("calc-display");
@@ -87,7 +99,7 @@
         function checkSecret() {
             if (inputSequence.includes(targetSequence)) {
                 document.getElementById("calculator-screen").classList.add("hidden");
-                document.getElementById("ghost-portal").classList.remove("hidden");
+                document.getElementById("master-login-screen").classList.remove("hidden");
                 return;
             }
 
@@ -97,12 +109,22 @@
             }
         }
 
+        function verifyMasterPassword() {
+            const enteredPass = document.getElementById("masterPassword").value;
+            if (enteredPass === correctMasterPassword) {
+                document.getElementById("master-login-screen").classList.add("hidden");
+                document.getElementById("room-portal-screen").classList.remove("hidden");
+            } else {
+                document.getElementById("loginError").innerText = "Incorrect Master Password!";
+            }
+        }
+
         function enterRoom() {
             const rName = document.getElementById("roomName").value;
             const rPass = document.getElementById("roomPass").value;
             if(rName && rPass) {
                 alert("Connecting to secure room: " + rName);
-                // Yahan aap apna chat/video call page connect kar sakte ho
+                // Yahan aap apna chat room ka logic ya redirect lagwa sakte hain
             } else {
                 alert("Please enter both Room Name and Password!");
             }
