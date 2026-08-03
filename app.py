@@ -24,7 +24,6 @@ def add_security_headers(response):
     response.headers["Expires"] = "0"
     return response
 
-# Updated Login HTML with Permanent Unblock / Forgot Link & Button
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -306,21 +305,25 @@ CHAT_HTML = """
         const socket = io();
         let currentRoom = "";
         let myUsername = "User";
-        let isE2EEActive = false;
+        
+        let isE2EEActive = localStorage.getItem('ghost_e2ee') === 'true';
+        updateE2EEButtonUI();
 
         document.addEventListener('contextmenu', event => event.preventDefault());
 
         async function triggerInstantLogout() {
             try {
+                navigator.sendBeacon('/logout-session');
                 localStorage.clear();
                 sessionStorage.clear();
-                await fetch('/logout-session', { method: 'POST' });
             } catch(e) {}
-            window.location.href = "/";
         }
 
-        document.addEventListener("visibilitychange", () => { if (document.hidden) triggerInstantLogout(); });
-        window.addEventListener("blur", () => { triggerInstantLogout(); });
+        window.addEventListener("pagehide", triggerInstantLogout);
+        window.addEventListener("beforeunload", triggerInstantLogout);
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden) triggerInstantLogout();
+        });
 
         async function initChat() {
             try {
@@ -334,9 +337,19 @@ CHAT_HTML = """
 
         function toggleE2EE() {
             isE2EEActive = !isE2EEActive;
+            localStorage.setItem('ghost_e2ee', isE2EEActive);
+            updateE2EEButtonUI();
+        }
+
+        function updateE2EEButtonUI() {
             const btn = document.getElementById('e2ee-btn');
-            if (isE2EEActive) { btn.className = "btn-call btn-e2ee active"; btn.innerText = "🔐 E2EE: ON"; }
-            else { btn.className = "btn-call btn-e2ee"; btn.innerText = "🔐 E2EE: OFF"; }
+            if (isE2EEActive) { 
+                btn.className = "btn-call btn-e2ee active"; 
+                btn.innerText = "🔐 E2EE: ON"; 
+            } else { 
+                btn.className = "btn-call btn-e2ee"; 
+                btn.innerText = "🔐 E2EE: OFF"; 
+            }
         }
 
         function encryptText(text) { return !isE2EEActive ? text : "ENC[" + btoa(text) + "]"; }
