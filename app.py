@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 from flask_socketio import SocketIO, emit, join_room
 import os
 
@@ -6,7 +6,7 @@ app = Flask(__name__)
 # Secure Secret Key for Sessions
 app.secret_key = "ghost_super_secret_key_998877"
 
-# Main App Password
+# Main Master App Password (jo aapne maanga tha)
 APP_PASSWORD = "guru&guru16230"
 
 socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
@@ -52,21 +52,24 @@ FAKE_404_HTML = """
 </html>
 """
 
-@app.route('/', methods=['GET', 'POST'])
-def login():
-    if request.method == 'POST':
-        user_password = request.form.get('password')
-        if user_password == APP_PASSWORD:
-            session['authenticated'] = True
-            return redirect(url_for('chat'))
-        else:
-            return FAKE_404_HTML, 404
-    
-    # If already logged in, go straight to chat
+@app.route('/', methods=['GET'])
+def home():
+    # Agar pehle se authenticated hai toh direct chat/room par bhej do
     if session.get('authenticated'):
         return redirect(url_for('chat'))
-        
-    return render_template('login.html')
+    # Nahi toh fake calculator wala index page khulega
+    return render_template('index.html')
+
+@app.route('/verify-master', methods=['POST'])
+def verify_master():
+    data = request.json
+    entered_password = data.get('password')
+    
+    if entered_password == APP_PASSWORD:
+        session['authenticated'] = True
+        return jsonify({"status": "success"})
+    else:
+        return jsonify({"status": "error", "message": "Invalid Password"}), 401
 
 @app.route('/chat')
 def chat():
