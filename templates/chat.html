@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ghost Chat Room</title>
-    <!-- Socket.IO Library CDN -->
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         body {
@@ -17,85 +16,71 @@
             height: 100vh;
             margin: 0;
         }
-        #lock-screen {
-            text-align: center;
-            background: #1e1e1e;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
-        }
         #chat-screen {
-            display: none;
-            width: 100%;
+            display: flex;
+            width: 90%;
             max-width: 500px;
             height: 80vh;
             background: #1e1e1e;
-            border-radius: 10px;
+            border-radius: 12px;
             flex-direction: column;
             padding: 20px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+        }
+        h2 {
+            margin-top: 0;
+            color: #bb86fc;
+            text-align: center;
         }
         #messages {
             flex-grow: 1;
             overflow-y: auto;
             border: 1px solid #333;
             padding: 10px;
-            margin-bottom: 10px;
-            border-radius: 5px;
+            margin-bottom: 15px;
+            border-radius: 8px;
+            background: #121212;
         }
-        input, button {
-            padding: 10px;
-            margin: 5px 0;
-            border: none;
-            border-radius: 5px;
+        .input-box {
+            display: flex;
+            gap: 10px;
         }
         input {
-            width: calc(100% - 22px);
+            flex-grow: 1;
+            padding: 12px;
             background: #2d2d2d;
+            border: 1px solid #444;
             color: white;
+            border-radius: 6px;
+            outline: none;
         }
         button {
-            background: #6200ee;
-            color: white;
+            padding: 12px 20px;
+            background: #bb86fc;
+            color: #000;
+            border: none;
+            border-radius: 6px;
             cursor: pointer;
             font-weight: bold;
+        }
+        button:hover {
+            background: #a362ea;
         }
     </style>
 </head>
 <body>
 
-    <!-- Step 1: Chat Password Overlay -->
-    <div id="lock-screen">
-        <h2>🔒 Enter Chat Password</h2>
-        <input type="password" id="chat-pass" placeholder="Enter Chat Password">
-        <br>
-        <button onclick="unlockChat()">Unlock</button>
-        <p id="error-msg" style="color: red; display: none;">Wrong Password!</p>
-    </div>
-
-    <!-- Step 2: Chat Interface -->
     <div id="chat-screen">
         <h2>👻 Ghost Secret Tunnel</h2>
         <div id="messages"></div>
-        <input type="text" id="msg-input" placeholder="Type a message...">
-        <button onclick="sendMessage()">Send</button>
+        <div class="input-box">
+            <input type="text" id="msg-input" placeholder="Type a message...">
+            <button onclick="sendMessage()">Send</button>
+        </div>
     </div>
 
     <script>
         const socket = io();
-
-        function unlockChat() {
-            const pass = document.getElementById('chat-pass').value;
-            socket.emit('verify_password', { password: pass });
-        }
-
-        socket.on('password_status', (data) => {
-            if (data.status === 'ok') {
-                document.getElementById('lock-screen').style.display = 'none';
-                document.getElementById('chat-screen').style.display = 'flex';
-            } else {
-                document.getElementById('error-msg').style.display = 'block';
-            }
-        });
 
         function sendMessage() {
             const input = document.getElementById('msg-input');
@@ -107,7 +92,7 @@
 
         socket.on('receive_message', (data) => {
             const msgBox = document.getElementById('messages');
-            msgBox.innerHTML += `<p><b>Peer:</b> ${data.msg}</p>`;
+            msgBox.innerHTML += `<p style="margin: 5px 0;"><b>Peer:</b> ${data.msg}</p>`;
             msgBox.scrollTop = msgBox.scrollHeight;
         });
     </script>
