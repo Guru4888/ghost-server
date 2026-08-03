@@ -318,6 +318,10 @@ CHAT_HTML = """
         let isE2EEActive = localStorage.getItem('ghost_e2ee') === 'true';
         updateE2EEButtonUI();
 
+        socket.on('connect', () => {
+            console.log("Connected to Socket.io Server, ID:", socket.id);
+        });
+
         document.addEventListener('contextmenu', event => event.preventDefault());
 
         async function triggerInstantLogout() {
@@ -377,22 +381,31 @@ CHAT_HTML = """
                 socket.emit('join_room', { room: currentRoom, user: myUsername });
                 document.getElementById('room-modal').style.display = 'none';
                 document.getElementById('display-room-id').innerText = "Room: " + room;
+                console.log("Joined room:", currentRoom);
+            } else {
+                alert("Please enter both Room Name and Password!");
             }
         }
 
         function sendMessage() {
             const input = document.getElementById('msg-input');
-            if (input.value.trim() !== "") {
-                socket.emit('send_message', { room: currentRoom, user: myUsername, msg: encryptText(input.value), timestamp: Date.now() });
+            const text = input.value.trim();
+            if (text !== "") {
+                if (!currentRoom) {
+                    alert("Error: You have not joined any room yet!");
+                    return;
+                }
+                console.log("Sending message to room:", currentRoom);
+                socket.emit('send_message', { room: currentRoom, user: myUsername, msg: encryptText(text), timestamp: Date.now() });
                 input.value = "";
             }
         }
 
         socket.on('receive_message', (data) => {
+            console.log("Received message:", data);
             const now = Date.now();
             const msgTimestamp = data.timestamp || now;
-            if ((now - msgTimestamp) > 3 * 60 * 60 * 1000) return;
-
+            
             const msgBox = document.getElementById('messages');
             const isMe = data.user === myUsername;
             const msgCard = document.createElement('div');
@@ -406,10 +419,10 @@ CHAT_HTML = """
             setTimeout(() => { if(msgCard.parentNode) msgCard.parentNode.removeChild(msgCard); }, remainingLife);
         });
 
-        // WebRTC Call Setup
         const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
         async function startCall(type) {
+            if (!currentRoom) { alert("Join a room first!"); return; }
             document.getElementById('video-container').style.display = 'flex';
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true });
@@ -440,9 +453,11 @@ CHAT_HTML = """
         socket.on('offer', async (offer) => {
             document.getElementById('video-container').style.display = 'flex';
             peerConnection = new RTCPeerConnection(servers);
-            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            document.getElementById('localVideo').srcObject = localStream;
-            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                document.getElementById('localVideo').srcObject = localStream;
+                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+            } catch(e) {}
 
             peerConnection.ontrack = event => {
                 document.getElementById('remoteVideo').srcObject = event.streams[0];
@@ -461,7 +476,9 @@ CHAT_HTML = """
         });
 
         socket.on('answer', async (answer) => {
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+            if(peerConnection) {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+            }
         });
 
         socket.on('ice_candidate', async (candidate) => {
