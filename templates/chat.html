@@ -18,10 +18,10 @@
             margin: 0;
         }
 
-        #name-modal, #call-modal {
+        #room-modal, #call-modal, #lock-screen {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.85);
+            background: rgba(0,0,0,0.95);
             display: flex;
             justify-content: center;
             align-items: center;
@@ -60,18 +60,19 @@
             border-bottom: 1px solid #30363d;
         }
         .top-bar h3 { margin: 0; font-size: 1rem; color: #58a6ff; }
-        .call-btns { display: flex; gap: 8px; }
+        .call-btns { display: flex; gap: 6px; }
         .btn-call {
-            padding: 6px 12px;
+            padding: 6px 10px;
             border-radius: 6px;
             border: none;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             font-weight: bold;
             cursor: pointer;
             color: white;
         }
         .btn-audio { background-color: #238636; }
         .btn-video { background-color: #1f6feb; }
+        .btn-lock { background-color: #da3633; }
 
         #messages {
             flex-grow: 1;
@@ -134,6 +135,7 @@
             color: white;
             border-radius: 6px;
             outline: none;
+            margin-bottom: 8px;
         }
         button.btn-send {
             padding: 10px 18px;
@@ -148,12 +150,26 @@
 </head>
 <body>
 
-    <!-- Username Popup -->
-    <div id="name-modal">
+    <!-- Access Reserved Room Modal -->
+    <div id="room-modal">
         <div class="modal-box">
-            <h2>🎭 Enter Your Agent ID</h2>
-            <input type="text" id="username-input" placeholder="e.g. Agent_777" style="width: 100%; margin-bottom: 15px;">
-            <button class="btn-send" style="width: 100%;" onclick="setUsername()">Join Secret Tunnel</button>
+            <h2>🔑 Access Reserved Room</h2>
+            <p style="font-size: 0.8rem; color: #8b949e;">Apne reserved room ka name aur password daalein:</p>
+            
+            <input type="text" id="room-name" placeholder="Reserved Room Name (e.g. SecretVault)">
+            <input type="password" id="room-pass" placeholder="Room Secret Password">
+            
+            <button class="btn-send" style="width: 100%; margin-top: 5px;" onclick="joinReservedRoom()">Enter Reserved Room</button>
+        </div>
+    </div>
+
+    <!-- Secret Lock Screen Overlay -->
+    <div id="lock-screen" style="display: none;">
+        <div class="modal-box">
+            <h2>🔒 Vault Locked</h2>
+            <p style="color: #8b949e; font-size: 0.85rem; margin-bottom: 15px;">Enter Key to Unlock Chat</p>
+            <input type="password" id="unlock-pass" placeholder="Enter PIN">
+            <button class="btn-send" style="width: 100%;" onclick="unlockChat()">Unlock Tunnel</button>
         </div>
     </div>
 
@@ -161,9 +177,8 @@
     <div id="call-modal" style="display: none;">
         <div class="modal-box">
             <h3 id="call-title">🔒 Encrypted Call</h3>
-            <p id="call-status" style="color: #3fb950; margin: 15px 0;">Connecting Untraceable Direct AES Stream...</p>
-            <p style="font-size: 0.75rem; color: #da3633;">⚡ Call log will be shredded immediately upon disconnection.</p>
-            <button class="btn-call" style="background: #da3633; width: 100%;" onclick="endCall()">🔴 End Call & Shred Log</button>
+            <p id="call-status" style="color: #3fb950; margin: 15px 0;">Connecting Untraceable Direct Stream...</p>
+            <button class="btn-call" style="background: #da3633; width: 100%;" onclick="endCall()">🔴 End Call</button>
         </div>
     </div>
 
@@ -172,32 +187,57 @@
         <div class="top-bar">
             <div>
                 <h3>👻 Ghost Tunnel</h3>
-                <span id="display-my-id" style="font-size: 0.75rem; color: #8b949e;">ID: Connecting...</span>
+                <span id="display-room-id" style="font-size: 0.75rem; color: #8b949e;">Room: Connecting...</span>
             </div>
             <div class="call-btns">
                 <button class="btn-call btn-audio" onclick="startCall('Audio Call')">📞 Audio</button>
                 <button class="btn-call btn-video" onclick="startCall('Video Call')">📹 Video</button>
+                <button class="btn-call btn-lock" onclick="lockChat()">🔒 Lock</button>
             </div>
         </div>
 
         <div id="messages"></div>
 
         <div class="input-box">
-            <input type="text" id="msg-input" placeholder="Type a message..." onkeypress="if(event.key==='Enter') sendMessage()">
+            <input type="text" id="msg-input" placeholder="Type a message..." onkeypress="if(event.key==='Enter') sendMessage()" style="margin-bottom:0;">
             <button class="btn-send" onclick="sendMessage()">Send</button>
         </div>
     </div>
 
     <script>
         const socket = io();
-        let myUsername = "Agent_Anon";
+        let myAgentID = "Agent_" + Math.floor(1000 + Math.random() * 9000); // Auto-generated ID
+        let currentRoom = "";
 
-        function setUsername() {
-            const input = document.getElementById('username-input');
-            if (input.value.trim() !== "") {
-                myUsername = input.value.trim();
-                document.getElementById('name-modal').style.display = 'none';
-                document.getElementById('display-my-id').innerText = "ID: " + myUsername;
+        function joinReservedRoom() {
+            const room = document.getElementById('room-name').value.trim();
+            const pass = document.getElementById('room-pass').value.trim();
+
+            if (room !== "" && pass !== "") {
+                currentRoom = room + "_" + pass;
+                
+                socket.emit('join_room', { room: currentRoom, user: myAgentID });
+                
+                document.getElementById('room-modal').style.display = 'none';
+                document.getElementById('display-room-id').innerText = "Room: " + room + " | " + myAgentID;
+            } else {
+                alert("Please enter both Room Name and Password!");
+            }
+        }
+
+        function lockChat() {
+            document.getElementById('lock-screen').style.display = 'flex';
+        }
+
+        function unlockChat() {
+            const pass = document.getElementById('unlock-pass').value;
+            
+            // Updated Chat Screen Unlock Password
+            if (pass === "guru16230") {
+                document.getElementById('lock-screen').style.display = 'none';
+                document.getElementById('unlock-pass').value = "";
+            } else {
+                alert("Incorrect PIN!");
             }
         }
 
@@ -207,7 +247,8 @@
                 const msgId = 'msg_' + Date.now();
                 socket.emit('send_message', { 
                     id: msgId,
-                    user: myUsername, 
+                    room: currentRoom,
+                    user: myAgentID, 
                     msg: input.value 
                 });
                 input.value = "";
@@ -216,7 +257,7 @@
 
         socket.on('receive_message', (data) => {
             const msgBox = document.getElementById('messages');
-            const isMe = data.user === myUsername;
+            const isMe = data.user === myAgentID;
             
             const msgCard = document.createElement('div');
             msgCard.id = data.id;
@@ -224,43 +265,26 @@
             msgCard.innerHTML = `
                 <span class="user-id">${data.user}</span>
                 <div>${data.msg}</div>
-                <span class="timer-tag" id="timer_${data.id}">🔥 Auto-Shred in 1m</span>
+                <span class="timer-tag">🔥 Auto-Shred in 1m</span>
             `;
             
             msgBox.appendChild(msgCard);
             msgBox.scrollTop = msgBox.scrollHeight;
 
-            // RULE 1: After Seen / Delivered (Active Chat) -> Auto Delete in 1 Minute (60,000 ms)
-            const seenTimer = setTimeout(() => {
-                deleteMessageUI(msgCard);
-            }, 60000);
-
-            // RULE 2: Fallback timer -> In case user is offline/unopened, Auto Delete after 3 Hours (10,800,000 ms)
+            // Auto-Delete
             setTimeout(() => {
-                clearTimeout(seenTimer);
-                deleteMessageUI(msgCard);
-            }, 10800000);
+                if (msgCard && msgCard.parentNode) {
+                    msgCard.parentNode.removeChild(msgCard);
+                }
+            }, 60000);
         });
 
-        function deleteMessageUI(element) {
-            if (element && element.parentNode) {
-                element.style.opacity = '0';
-                setTimeout(() => {
-                    if (element.parentNode) {
-                        element.parentNode.removeChild(element);
-                    }
-                }, 500);
-            }
-        }
-
-        // RULE 3: Immediate Call Log Destruction upon Call Cut
         function startCall(type) {
             document.getElementById('call-title').innerText = "🔒 " + type;
             document.getElementById('call-modal').style.display = 'flex';
         }
 
         function endCall() {
-            // Immediate Shredding: No log stored in memory or UI
             document.getElementById('call-modal').style.display = 'none';
         }
     </script>
