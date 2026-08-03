@@ -3,11 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ghost Chat Room</title>
+    <title>Ghost Secret Tunnel</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
+        * { box-sizing: border-box; }
         body {
-            background-color: #121212;
+            background-color: #0d1117;
             color: #ffffff;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             display: flex;
@@ -16,6 +17,8 @@
             height: 100vh;
             margin: 0;
         }
+
+        /* Modal for Username */
         #name-modal {
             position: fixed;
             top: 0; left: 0; width: 100%; height: 100%;
@@ -23,119 +26,183 @@
             display: flex;
             justify-content: center;
             align-items: center;
-            z-index: 10;
+            z-index: 999;
         }
         .modal-box {
-            background: #1e1e1e;
-            padding: 25px;
-            border-radius: 10px;
+            background: #161b22;
+            padding: 30px;
+            border-radius: 12px;
             text-align: center;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.7);
+            border: 1px solid #30363d;
         }
+
+        /* Main Chat Window */
         #chat-screen {
             display: flex;
-            width: 90%;
+            width: 95%;
             max-width: 500px;
-            height: 80vh;
-            background: #1e1e1e;
+            height: 85vh;
+            background: #161b22;
             border-radius: 12px;
             flex-direction: column;
-            padding: 20px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+            border: 1px solid #30363d;
+            box-shadow: 0 4px 25px rgba(0,0,0,0.8);
+            overflow: hidden;
         }
-        h2 {
-            margin-top: 0;
-            color: #bb86fc;
-            text-align: center;
+
+        /* Top Bar with Audio/Video Call Buttons */
+        .top-bar {
+            background: #21262d;
+            padding: 12px 15px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #30363d;
         }
+        .top-bar h3 { margin: 0; font-size: 1rem; color: #58a6ff; }
+        .call-btns { display: flex; gap: 8px; }
+        .btn-call {
+            padding: 6px 12px;
+            border-radius: 6px;
+            border: none;
+            font-size: 0.85rem;
+            font-weight: bold;
+            cursor: pointer;
+            color: white;
+        }
+        .btn-audio { background-color: #238636; }
+        .btn-video { background-color: #1f6feb; }
+
+        /* Messages Display Area */
         #messages {
             flex-grow: 1;
             overflow-y: auto;
-            border: 1px solid #333;
-            padding: 12px;
-            margin-bottom: 15px;
-            border-radius: 8px;
-            background: #121212;
+            padding: 15px;
+            background: #0d1117;
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 10px;
         }
         .msg-card {
-            padding: 8px 12px;
-            border-radius: 8px;
+            padding: 10px 14px;
+            border-radius: 10px;
             max-width: 75%;
             word-wrap: break-word;
+            font-size: 0.95rem;
         }
         .my-msg {
-            background: #3700b3;
+            background: #1f6feb;
+            color: #ffffff;
             align-self: flex-end;
-            text-align: right;
+            border-bottom-right-radius: 2px;
         }
         .other-msg {
-            background: #2d2d2d;
+            background: #21262d;
+            color: #c9d1d9;
             align-self: flex-start;
+            border-bottom-left-radius: 2px;
+            border: 1px solid #30363d;
         }
-        .user-name {
+        .user-id {
             font-size: 0.75em;
-            color: #aaa;
-            margin-bottom: 2px;
+            color: #8b949e;
+            margin-bottom: 3px;
             display: block;
+            font-weight: bold;
         }
+
+        /* Bottom Controls */
         .input-box {
             display: flex;
-            gap: 10px;
+            padding: 12px;
+            background: #21262d;
+            gap: 8px;
+            border-top: 1px solid #30363d;
         }
         input {
             flex-grow: 1;
-            padding: 12px;
-            background: #2d2d2d;
-            border: 1px solid #444;
+            padding: 10px;
+            background: #0d1117;
+            border: 1px solid #30363d;
             color: white;
             border-radius: 6px;
             outline: none;
         }
-        button {
-            padding: 12px 20px;
-            background: #bb86fc;
-            color: #000;
+        button.btn-send {
+            padding: 10px 18px;
+            background: #238636;
+            color: white;
             border: none;
             border-radius: 6px;
             cursor: pointer;
             font-weight: bold;
         }
+
+        /* Simple Modal Alert for Calls */
+        #call-modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
 
-    <!-- Username Popup -->
+    <!-- Username / Agent ID Setup Popup -->
     <div id="name-modal">
         <div class="modal-box">
-            <h2>🎭 Choose Your Alias</h2>
-            <input type="text" id="username-input" placeholder="Enter your Name/ID...">
-            <br><br>
-            <button onclick="setUsername()">Join Chat</button>
+            <h2>🎭 Enter Your Agent ID</h2>
+            <p style="color: #8b949e; font-size: 0.9rem;">Apna Secret Name/ID enter karein:</p>
+            <input type="text" id="username-input" placeholder="e.g. Agent_777" style="width: 100%; margin-bottom: 15px;">
+            <button class="btn-send" style="width: 100%;" onclick="setUsername()">Join Secret Tunnel</button>
         </div>
     </div>
 
-    <!-- Chat Screen -->
+    <!-- Call Overlay Popup -->
+    <div id="call-modal">
+        <div class="modal-box">
+            <h3 id="call-title">📞 Encrypted Call</h3>
+            <p id="call-status" style="color: #3fb950; margin: 15px 0;">Connecting Untraceable Direct AES Stream...</p>
+            <button class="btn-call" style="background: #da3633; width: 100%;" onclick="endCall()">🔴 End Call</button>
+        </div>
+    </div>
+
+    <!-- Main Chat Window -->
     <div id="chat-screen">
-        <h2>👻 Ghost Secret Tunnel</h2>
+        <div class="top-bar">
+            <div>
+                <h3>👻 Ghost Tunnel</h3>
+                <span id="display-my-id" style="font-size: 0.75rem; color: #8b949e;">ID: Connecting...</span>
+            </div>
+            <div class="call-btns">
+                <button class="btn-call btn-audio" onclick="startCall('Audio Call')">📞 Audio</button>
+                <button class="btn-call btn-video" onclick="startCall('Video Call')">📹 Video</button>
+            </div>
+        </div>
+
         <div id="messages"></div>
+
         <div class="input-box">
             <input type="text" id="msg-input" placeholder="Type a message..." onkeypress="if(event.key==='Enter') sendMessage()">
-            <button onclick="sendMessage()">Send</button>
+            <button class="btn-send" onclick="sendMessage()">Send</button>
         </div>
     </div>
 
     <script>
         const socket = io();
-        let myUsername = "Anonymous";
+        let myUsername = "Agent_Anon";
 
         function setUsername() {
             const input = document.getElementById('username-input');
             if (input.value.trim() !== "") {
                 myUsername = input.value.trim();
                 document.getElementById('name-modal').style.display = 'none';
+                document.getElementById('display-my-id').innerText = "ID: " + myUsername;
             }
         }
 
@@ -156,14 +223,23 @@
             
             const msgHtml = `
                 <div class="msg-card ${isMe ? 'my-msg' : 'other-msg'}">
-                    <span class="user-name">${data.user}</span>
-                    <span>${data.msg}</span>
+                    <span class="user-id">${data.user}</span>
+                    <div>${data.msg}</div>
                 </div>
             `;
             
             msgBox.innerHTML += msgHtml;
             msgBox.scrollTop = msgBox.scrollHeight;
         });
+
+        function startCall(type) {
+            document.getElementById('call-title').innerText = "🔒 " + type;
+            document.getElementById('call-modal').style.display = 'flex';
+        }
+
+        function endCall() {
+            document.getElementById('call-modal').style.display = 'none';
+        }
     </script>
 </body>
 </html>
