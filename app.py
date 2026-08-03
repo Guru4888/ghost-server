@@ -3,10 +3,9 @@ from flask_socketio import SocketIO, emit, join_room
 import os
 
 app = Flask(__name__)
-# Secure Secret Key for Sessions
 app.secret_key = "ghost_super_secret_key_998877"
 
-# Main Master App Password (jo aapne maanga tha)
+# Aapka Main App Password
 APP_PASSWORD = "guru&guru16230"
 
 socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
@@ -54,10 +53,8 @@ FAKE_404_HTML = """
 
 @app.route('/', methods=['GET'])
 def home():
-    # Agar pehle se authenticated hai toh direct chat/room par bhej do
     if session.get('authenticated'):
         return redirect(url_for('chat'))
-    # Nahi toh fake calculator wala index page khulega
     return render_template('index.html')
 
 @app.route('/verify-master', methods=['POST'])
@@ -73,7 +70,6 @@ def verify_master():
 
 @app.route('/chat')
 def chat():
-    # Strict Session Validation
     if not session.get('authenticated'):
         return FAKE_404_HTML, 404
     return render_template('chat.html')
