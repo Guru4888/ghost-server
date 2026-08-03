@@ -8,8 +8,9 @@ app = Flask(__name__)
 app.secret_key = "ghostsecret12345"
 socketio = SocketIO(app, async_mode='eventlet')
 
+# === PASSWORDS SETUP ===
 APP_PASSWORD = "1234"
-CHAT_PASSWORD = "abcd"
+CHAT_PASSWORD = "1234"  # <-- Isko 'abcd' se badal kar '1234' kar diya hai
 
 @app.route("/", methods=["GET", "POST"])
 def login():
