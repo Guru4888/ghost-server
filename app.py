@@ -8,7 +8,8 @@ app.secret_key = "ghost_super_secret_key_998877"
 # Aapka Main App Password
 APP_PASSWORD = "guru&guru16230"
 
-socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
+# Bina eventlet ke standard SocketIO setup (Python 3.14 compatible)
+socketio = SocketIO(app, cors_allowed_origins="*")
 
 FAKE_404_HTML = """
 <!DOCTYPE html>
