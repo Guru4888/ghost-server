@@ -13,6 +13,7 @@ REGISTERED_USERS = {
 # Security Trackers & Logs
 FAILED_ATTEMPTS = {}       
 BLOCKED_IPS = {}           
+BLOCKED_USERS = {}         
 UNBLOCK_REQUESTS = {}      
 USER_SESSIONS = {}         
 MESSAGE_LOGS = []          
@@ -45,14 +46,14 @@ LOGIN_HTML = """
 <body>
     <div class="portal-box" id="main-container">
         <h2>🔒 Secure Portal</h2>
-        <div class="tabs">
+        <div class="tabs" id="portal-tabs">
             <button class="tab-btn active" onclick="switchTab('login')">Login</button>
             <button class="tab-btn" onclick="switchTab('register')">Register</button>
         </div>
 
         <div id="login-form" class="form-section active">
-            <input type="text" id="login-user" placeholder="Username" autocomplete="off">
-            <input type="password" id="login-pass" placeholder="Password" autocomplete="new-password">
+            <input type="text" id="login-user" placeholder="Username" autocomplete="off" name="no-autofill-user">
+            <input type="password" id="login-pass" placeholder="Password" autocomplete="new-password" name="no-autofill-pass">
             <button onclick="loginUser()">Login to Chat</button>
             <div id="loginError" class="error-msg"></div>
         </div>
@@ -66,17 +67,28 @@ LOGIN_HTML = """
     </div>
 
     <script>
+        window.addEventListener("pageshow", function(event) {
+            document.getElementById("login-user").value = "";
+            document.getElementById("login-pass").value = "";
+            document.getElementById("reg-user").value = "";
+            document.getElementById("reg-pass").value = "";
+        });
+
         async function checkBlockStatus() {
             let res = await fetch('/check-status');
             let data = await res.json();
-            if(data.blocked) { showBlockedScreen(data.requested, data.username); }
+            if(data.blocked) { 
+                showBlockedScreen(data.requested, data.username); 
+            }
         }
 
         function showBlockedScreen(alreadyRequested, reqUsername) {
             const box = document.getElementById('main-container');
+            document.getElementById('portal-tabs').style.display = 'none';
             box.innerHTML = `
-                <h2 style="color: #f85149;">🚨 Device Blocked</h2>
-                <p style="color: #8b949e; font-size: 13px; margin: 10px 0;">Account: <b style="color:#58a6ff;">${reqUsername || 'Unknown'}</b></p>
+                <h2 style="color: #f85149;">🚨 Account & Device Blocked</h2>
+                <p style="color: #8b949e; font-size: 13px; margin: 10px 0;">Target Account: <b style="color:#58a6ff;">${reqUsername || 'Unknown'}</b></p>
+                <p style="color: #8b949e; font-size: 12px; margin-bottom: 15px;">5 incorrect attempts detected. Both your Username and Device IP have been locked by security protocols.</p>
                 <button id="req-btn" onclick="sendUnblockRequest()" ${alreadyRequested ? 'disabled style="background:#30363d; cursor:not-allowed;"' : ''}>
                     ${alreadyRequested ? '✅ Request Sent to Admin' : '📤 Request Admin to Unblock'}
                 </button>
@@ -170,7 +182,7 @@ ADMIN_HTML = """
     <div class="admin-container">
         <div class="admin-box">
             <h2>🛡️ Control Panel</h2>
-            <p style="color: #8b949e; font-size: 12px;">Unblock Requests & Active Users</p>
+            <p style="color: #8b949e; font-size: 12px;">Unblock Requests (ID + Device Locked)</p>
             <ul id="requests-list"></ul>
             <div style="margin-top: 15px; border-top: 1px solid #30363d; padding-top: 10px;">
                 <p style="color: #8b949e; font-size: 12px;">Active Users Management</p>
@@ -193,9 +205,9 @@ ADMIN_HTML = """
             let resReq = await fetch('/get-unblock-requests');
             let dataReq = await resReq.json();
             let reqListEl = document.getElementById('requests-list');
-            reqListEl.innerHTML = dataReq.requests.length === 0 ? "<p style='color: #8b949e; text-align:center; font-size:12px;'>No requests.</p>" : "";
+            reqListEl.innerHTML = dataReq.requests.length === 0 ? "<p style='color: #8b949e; text-align:center; font-size:12px;'>No pending requests.</p>" : "";
             dataReq.requests.forEach(req => {
-                reqListEl.innerHTML += `<li><div><b>👤 ${req.username}</b></div> <button class="action-btn" onclick="approveUnblock('${req.ip}')">Unblock</button></li>`;
+                reqListEl.innerHTML += `<li><div><b>👤 ${req.username}</b></div> <button class="action-btn" onclick="approveUnblock('${req.username}', '${req.ip}')">Unblock ID+IP</button></li>`;
             });
 
             let resUsr = await fetch('/get-all-users');
@@ -250,8 +262,8 @@ ADMIN_HTML = """
             }
         }
 
-        async function approveUnblock(ip) {
-            await fetch('/approve-unblock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ip: ip }) });
+        async function approveUnblock(username, ip) {
+            await fetch('/approve-unblock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: username, ip: ip }) });
             fetchAdminData();
         }
 
@@ -413,12 +425,16 @@ def home(): return LOGIN_HTML
 @app.route('/check-status')
 def check_status():
     ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-    return jsonify({"blocked": ip in BLOCKED_IPS, "requested": ip in UNBLOCK_REQUESTS, "username": UNBLOCK_REQUESTS.get(ip, {}).get("username", "")})
+    # Check if either IP or any blocked user mapping is active
+    is_blocked = ip in BLOCKED_IPS
+    req_username = UNBLOCK_REQUESTS.get(ip, {}).get("username", "")
+    return jsonify({"blocked": is_blocked, "requested": ip in UNBLOCK_REQUESTS, "username": req_username})
 
 @app.route('/request-unblock', methods=['POST'])
 def request_unblock():
     ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-    if ip in BLOCKED_IPS and ip in UNBLOCK_REQUESTS: UNBLOCK_REQUESTS[ip]["status"] = "Pending"
+    if ip in BLOCKED_IPS and ip in UNBLOCK_REQUESTS: 
+        UNBLOCK_REQUESTS[ip]["status"] = "Pending"
     return jsonify({"status": "success"})
 
 @app.route('/register', methods=['POST'])
@@ -426,16 +442,20 @@ def register():
     data = request.json
     u, p = data.get('username', '').strip(), data.get('password', '').strip()
     if not u or not p: return jsonify({"status": "error", "message": "Fields required!"}), 400
-    if u in REGISTERED_USERS: return jsonify({"status": "error", "message": "Exists!"}), 400
+    if u in REGISTERED_USERS or u in BLOCKED_USERS: return jsonify({"status": "error", "message": "Username exists or is blocked!"}), 400
     REGISTERED_USERS[u] = p
     return jsonify({"status": "success"})
 
 @app.route('/login', methods=['POST'])
 def login():
     ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-    if ip in BLOCKED_IPS: return jsonify({"status": "blocked"}), 403
     data = request.json
     u, p = data.get('username', '').strip(), data.get('password', '').strip()
+
+    # Check if Device (IP) or User is already blocked
+    if ip in BLOCKED_IPS or u in BLOCKED_USERS:
+        return jsonify({"status": "blocked"}), 403
+
     if u in REGISTERED_USERS and REGISTERED_USERS[u] == p:
         FAILED_ATTEMPTS[ip] = 0
         session['authenticated'] = True
@@ -446,9 +466,13 @@ def login():
     else:
         FAILED_ATTEMPTS[ip] = FAILED_ATTEMPTS.get(ip, 0) + 1
         if FAILED_ATTEMPTS[ip] >= 5:
+            # Block both Device IP and Username ID simultaneously
             BLOCKED_IPS[ip] = True
+            if u:
+                BLOCKED_USERS[u] = True
             UNBLOCK_REQUESTS[ip] = {"username": u or "Unknown", "status": "Pending"}
             return jsonify({"status": "blocked"}), 403
+            
         return jsonify({"status": "error", "message": "Invalid credentials!"}), 401
 
 @app.route('/check-admin-session')
@@ -494,6 +518,7 @@ def delete_user():
     
     if target_user in REGISTERED_USERS and target_user != "admin":
         del REGISTERED_USERS[target_user]
+        BLOCKED_USERS.pop(target_user, None)
         if target_user in USER_SESSIONS:
             ip = USER_SESSIONS[target_user]
             BLOCKED_IPS.pop(ip, None)
@@ -507,19 +532,34 @@ def delete_user():
 def instant_block():
     if not session.get('is_admin', False): return jsonify({"status": "unauthorized"}), 403
     u = request.json.get('username')
+    BLOCKED_USERS[u] = True
     if u in USER_SESSIONS:
         ip = USER_SESSIONS[u]
         BLOCKED_IPS[ip] = True
         UNBLOCK_REQUESTS[ip] = {"username": u, "status": "Pending"}
+    else:
+        # Fallback if session isn't active
+        UNBLOCK_REQUESTS["manual_" + u] = {"username": u, "status": "Pending"}
     return jsonify({"status": "success"})
 
 @app.route('/approve-unblock', methods=['POST'])
 def approve_unblock():
     if not session.get('is_admin', False): return jsonify({"status": "unauthorized"}), 403
-    ip = request.json.get('ip')
-    BLOCKED_IPS.pop(ip, None)
-    UNBLOCK_REQUESTS.pop(ip, None)
-    FAILED_ATTEMPTS[ip] = 0
+    data = request.json
+    ip = data.get('ip')
+    username = data.get('username')
+    
+    # Remove from all block lists (Both Device IP & User ID)
+    if ip and not ip.startswith("manual_"):
+        BLOCKED_IPS.pop(ip, None)
+        UNBLOCK_REQUESTS.pop(ip, None)
+        FAILED_ATTEMPTS[ip] = 0
+    
+    if username:
+        BLOCKED_USERS.pop(username, None)
+        # Also cleanup any manual unblock keys
+        UNBLOCK_REQUESTS.pop("manual_" + username, None)
+
     return jsonify({"status": "success"})
 
 @app.route('/chat')
