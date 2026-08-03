@@ -206,11 +206,8 @@ CHAT_HTML = """
             document.getElementById('call-modal').style.display = 'none';
         }
 
-        // Smart Visibility Logic: Background mein call chalti rahegi, par agar phone lock hua toh call cut ho jayegi
         document.addEventListener("visibilitychange", function() {
             if (document.hidden && isCallActive) {
-                // Agar phone lock hua ya screen off hui, toh visibility state 'hidden' ke sath time gap check hota hai ya turant cut hoti hai.
-                // Mobile par power button dabane se document hidden ho jata hai aur page visibility turant zero ho jati hai.
                 endCall();
                 alert("🔒 Security Alert: Call terminated instantly due to device lock/screen off.");
             }
@@ -222,8 +219,8 @@ CHAT_HTML = """
 
 @app.route('/', methods=['GET'])
 def home():
-    if session.get('authenticated'):
-        return redirect(url_for('chat'))
+    # Fix: Har baar root par aane par session clear kar denge taaki pehle Master Login page hi khule
+    session.clear()
     return LOGIN_HTML
 
 @app.route('/verify-master', methods=['POST'])
