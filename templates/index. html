@@ -3,20 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calculator</title>
+    <title>System Access</title>
     <style>
         body { background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .hidden { display: none !important; }
-        
-        #calculator-screen { background: #161b22; padding: 20px; border-radius: 12px; width: 280px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-        #calc-display { width: 100%; height: 50px; background: #010409; color: #58a6ff; font-size: 24px; text-align: right; padding: 10px; box-sizing: border-box; margin-bottom: 15px; border-radius: 6px; border: 1px solid #30363d; }
-        .calc-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-        .calc-btn { padding: 15px; font-size: 18px; background: #21262d; color: white; border: none; border-radius: 6px; cursor: pointer; }
-        .calc-btn:active { background: #30363d; }
-        .calc-btn.operator { background: #1f6feb; }
-
         .portal-box { background: #161b22; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 320px; text-align: center; border: 1px solid #30363d; }
-        .portal-box input { width: 100%; padding: 12px; margin: 10px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; }
+        .portal-box input { width: 100%; padding: 12px; margin: 10px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
         .portal-box button { width: 100%; padding: 12px; background: #238636; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 10px; }
         .portal-box button:hover { background: #2ea043; }
         .error-msg { color: #f85149; font-size: 13px; margin-top: 5px; }
@@ -24,85 +15,15 @@
 </head>
 <body>
 
-    <div id="calculator-screen">
-        <div id="calc-display">0</div>
-        <div class="calc-buttons">
-            <button class="calc-btn" onclick="pressButton('C')">C</button>
-            <button class="calc-btn" onclick="pressButton('(')">(</button>
-            <button class="calc-btn" onclick="pressButton(')')">)</button>
-            <button class="calc-btn operator" onclick="pressButton('/')">/</button>
-            <button class="calc-btn" onclick="pressButton('7')">7</button>
-            <button class="calc-btn" onclick="pressButton('8')">8</button>
-            <button class="calc-btn" onclick="pressButton('9')">9</button>
-            <button class="calc-btn operator" onclick="pressButton('*')">*</button>
-            <button class="calc-btn" onclick="pressButton('4')">4</button>
-            <button class="calc-btn" onclick="pressButton('5')">5</button>
-            <button class="calc-btn" onclick="pressButton('6')">6</button>
-            <button class="calc-btn operator" onclick="pressButton('-')">-</button>
-            <button class="calc-btn" onclick="pressButton('1')">1</button>
-            <button class="calc-btn" onclick="pressButton('2')">2</button>
-            <button class="calc-btn" onclick="pressButton('3')">3</button>
-            <button class="calc-btn operator" onclick="pressButton('+')">+</button>
-            <button class="calc-btn" onclick="pressButton('0')">0</button>
-            <button class="calc-btn" onclick="pressButton('.')">.</button>
-            <button class="calc-btn operator" onclick="pressButton('=')">=</button>
-            <button class="calc-btn operator" onclick="pressButton('')"></button>
-        </div>
-    </div>
-
-    <div id="master-login-screen" class="hidden">
-        <div class="portal-box">
-            <h2>🔒 System Access</h2>
-            <p style="color: #8b949e; font-size: 13px; margin-bottom: 15px;">Enter Master App Password</p>
-            <input type="password" id="masterPassword" placeholder="Enter Access Password">
-            <button onclick="verifyMasterPassword()">Access Portal</button>
-            <div id="loginError" class="error-msg"></div>
-        </div>
-    </div>
-
-    <div id="room-portal-screen" class="hidden">
-        <div class="portal-box">
-            <h2>🛡️ Ghost Tunnel Room</h2>
-            <p style="color: #8b949e; font-size: 13px; margin-bottom: 15px;">Connect to Secure Chat</p>
-            <input type="text" id="roomName" placeholder="Enter Room Name">
-            <input type="password" id="roomPass" placeholder="Enter Room Password">
-            <button onclick="enterRoom()">Join Room</button>
-        </div>
+    <div class="portal-box">
+        <h2>🔒 System Access</h2>
+        <p style="color: #8b949e; font-size: 13px; margin-bottom: 15px;">Enter Master App Password</p>
+        <input type="password" id="masterPassword" placeholder="Enter Access Password">
+        <button onclick="verifyMasterPassword()">Access Portal</button>
+        <div id="loginError" class="error-msg"></div>
     </div>
 
     <script>
-        let inputSequence = "";
-        const targetSequence = "C05001193024CC=";
-
-        function pressButton(val) {
-            let display = document.getElementById("calc-display");
-
-            if (val === '=') {
-                inputSequence += "=";
-                checkSecret();
-            } else if (val === 'C') {
-                inputSequence += "C";
-                display.innerText = "0";
-                checkSecret();
-            } else {
-                inputSequence += val;
-                display.innerText = inputSequence.replace(/C/g, '');
-            }
-        }
-
-        function checkSecret() {
-            if (inputSequence.includes(targetSequence)) {
-                document.getElementById("calculator-screen").classList.add("hidden");
-                document.getElementById("master-login-screen").classList.remove("hidden");
-                return;
-            }
-
-            if (inputSequence.length > 25) {
-                inputSequence = "";
-                document.getElementById("calculator-screen").classList.remove("hidden");
-            }
-        }
-
         async function verifyMasterPassword() {
             const enteredPass = document.getElementById("masterPassword").value;
             
@@ -115,8 +36,7 @@
 
                 let result = await response.json();
                 if (response.ok && result.status === "success") {
-                    document.getElementById("master-login-screen").classList.add("hidden");
-                    document.getElementById("room-portal-screen").classList.remove("hidden");
+                    window.location.href = "/chat";
                 } else {
                     document.getElementById("loginError").innerText = "Incorrect Master Password!";
                 }
@@ -124,17 +44,6 @@
                 document.getElementById("loginError").innerText = "Server error, try again!";
             }
         }
-
-        function enterRoom() {
-            const rName = document.getElementById("roomName").value;
-            const rPass = document.getElementById("roomPass").value;
-            if(rName && rPass) {
-                window.location.href = "/chat";
-            } else {
-                alert("Please enter both Room Name and Password!");
-            }
-        }
     </script>
 </body>
 </html>
-
