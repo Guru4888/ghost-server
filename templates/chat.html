@@ -152,24 +152,15 @@
 </head>
 <body>
 
-    <!-- Access Reserved Room Modal (CLEAN & AUTOFILL BLOCKED) -->
+    <!-- Access Reserved Room Modal -->
     <div id="room-modal">
         <div class="modal-box">
             <h2>🔑 Access Reserved Room</h2>
             <p style="font-size: 0.8rem; color: #8b949e;">Apne reserved room ka name aur password daalein:</p>
             
-            <form onsubmit="return false;" autocomplete="off" action="/noop">
-                <!-- Random dummy inputs to block browser memory -->
-                <input type="text" style="display:none;" name="fake_user_field"/>
-                <input type="password" style="display:none;" name="fake_pass_field"/>
-
-                <input type="text" id="room-name" name="ghost_room_x99" placeholder="Reserved Room Name" 
-                       autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"
-                       aria-autocomplete="none">
-                       
-                <input type="password" id="room-pass" name="ghost_pass_y88" placeholder="Room Secret Password" 
-                       autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false">
-                
+            <form onsubmit="return false;" autocomplete="off">
+                <input type="text" id="room-name" placeholder="Reserved Room Name" autocomplete="off">
+                <input type="password" id="room-pass" placeholder="Room Secret Password" autocomplete="new-password">
                 <button class="btn-send" style="width: 100%; margin-top: 5px;" onclick="joinReservedRoom()">Enter Reserved Room</button>
             </form>
         </div>
@@ -179,11 +170,9 @@
     <div id="lock-screen" style="display: none;">
         <div class="modal-box">
             <h2>🔒 Vault Locked</h2>
-            <p style="color: #8b949e; font-size: 0.85rem; margin-bottom: 15px;">Enter Key to Unlock Chat</p>
-            <form onsubmit="return false;" autocomplete="off">
-                <input type="password" id="unlock-pass" placeholder="Enter PIN" autocomplete="new-password">
-                <button class="btn-send" style="width: 100%; margin-top:8px;" onclick="unlockChat()">Unlock Tunnel</button>
-            </form>
+            <p style="color: #8b949e; font-size: 0.85rem; margin-bottom: 15px;">Enter PIN to Unlock Chat</p>
+            <input type="password" id="unlock-pass" placeholder="Enter PIN">
+            <button class="btn-send" style="width: 100%; margin-top:8px;" onclick="unlockChat()">Unlock Tunnel</button>
         </div>
     </div>
 
@@ -213,9 +202,7 @@
         <div id="messages"></div>
 
         <div class="input-box">
-            <input type="text" id="msg-input" placeholder="Type a message..." 
-                   autocomplete="off" autocorrect="off" spellcheck="false" 
-                   onkeypress="if(event.key==='Enter') sendMessage()" style="margin-bottom:0;">
+            <input type="text" id="msg-input" placeholder="Type a message..." autocomplete="off" onkeypress="if(event.key==='Enter') sendMessage()" style="margin-bottom:0;">
             <button class="btn-send" onclick="sendMessage()">Send</button>
         </div>
     </div>
@@ -225,22 +212,6 @@
         let myAgentID = "Agent_" + Math.floor(1000 + Math.random() * 9000);
         let currentRoom = "";
         let isCallActive = false;
-
-        let isInitialized = false;
-        setTimeout(() => { isInitialized = true; }, 2000);
-
-        // CLEAR BROWSERS SAVED AUTOFILL ON PAGE LOAD
-        window.onload = function() {
-            document.getElementById('room-name').value = '';
-            document.getElementById('room-pass').value = '';
-        };
-
-        document.addEventListener('visibilitychange', function() {
-            if (document.visibilityState === 'hidden' && isInitialized && !isCallActive) {
-                if(socket) socket.disconnect();
-                window.location.href = "/logout";
-            }
-        });
 
         function joinReservedRoom() {
             const room = document.getElementById('room-name').value.trim();
@@ -309,14 +280,9 @@
             msgBox.appendChild(msgCard);
             msgBox.scrollTop = msgBox.scrollHeight;
 
-            const seenTimer = setTimeout(() => {
+            setTimeout(() => {
                 removeMsgElement(msgCard);
             }, 60000);
-
-            setTimeout(() => {
-                clearTimeout(seenTimer);
-                removeMsgElement(msgCard);
-            }, 10800000);
         });
 
         function startCall(type) {
