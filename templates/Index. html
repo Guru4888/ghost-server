@@ -134,7 +134,6 @@
             const rName = document.getElementById("roomName").value;
             const rPass = document.getElementById("roomPass").value;
             if(rName && rPass) {
-                // Aap ise apne chat page par bhej sakte hain ya session set kar sakte hain
                 window.location.href = "/chat";
             } else {
                 alert("Please enter both Room Name and Password!");
