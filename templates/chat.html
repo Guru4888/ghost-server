@@ -1,3 +1,4 @@
+CHAT_HTML = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -16,6 +17,7 @@
             align-items: center;
             height: 100vh;
             margin: 0;
+            user-select: none;
         }
 
         #room-modal, #call-modal, #lock-screen {
@@ -73,6 +75,7 @@
         .btn-audio { background-color: #238636; }
         .btn-video { background-color: #1f6feb; }
         .btn-lock { background-color: #da3633; }
+        .btn-admin { background-color: #d29922; display: none; color: #0d1117; }
 
         #messages {
             flex-grow: 1;
@@ -136,6 +139,7 @@
             border-radius: 6px;
             outline: none;
             margin-bottom: 8px;
+            user-select: text;
         }
         button.btn-send {
             padding: 10px 18px;
@@ -203,6 +207,7 @@
                 <button class="btn-call btn-audio" onclick="startCall('Audio Call')">📞 Audio</button>
                 <button class="btn-call btn-video" onclick="startCall('Video Call')">📹 Video</button>
                 <button class="btn-call btn-lock" onclick="lockChat()">🔒 Lock</button>
+                <button id="admin-panel-btn" class="btn-call btn-admin" onclick="window.location.href='/admin-panel-guru'">🛡️ Admin</button>
             </div>
         </div>
 
@@ -220,17 +225,29 @@
         const socket = io();
         let myAgentID = "Agent_" + Math.floor(1000 + Math.random() * 9000);
         let currentRoom = "";
-        let isCallActive = false; // Flag to check active Audio/Video Call status
+        let isCallActive = false;
 
         let isInitialized = false;
         setTimeout(() => { isInitialized = true; }, 2000);
 
-        // AUTO LOGOUT / 404 LOGIC WITH CALL EXCEPTION
+        async function initChat() {
+            try {
+                let res = await fetch('/check-admin-session');
+                let data = await res.json();
+                if(data.is_admin) { 
+                    document.getElementById('admin-panel-btn').style.display = 'inline-block'; 
+                    myAgentID = "Admin_Guru";
+                } else if(data.username && data.username !== 'Guest') {
+                    myAgentID = data.username;
+                }
+            } catch(e) {}
+        }
+        initChat();
+
         document.addEventListener('visibilitychange', function() {
-            // Agar CALL CHAL RAHI HAI toh background hone par logout NAHI hoga
             if (document.visibilityState === 'hidden' && isInitialized && !isCallActive) {
                 if(socket) socket.disconnect();
-                window.location.href = "/logout";
+                window.location.href = "/logout-session";
             }
         });
 
@@ -265,12 +282,16 @@
         function sendMessage() {
             const input = document.getElementById('msg-input');
             if (input.value.trim() !== "") {
+                if (!currentRoom) {
+                    alert("Please join a room first!");
+                    return;
+                }
                 const msgId = 'msg_' + Date.now();
                 socket.emit('send_message', { 
                     id: msgId,
                     room: currentRoom,
                     user: myAgentID, 
-                    msg: input.value 
+                    msg: input.value.trim() 
                 });
                 input.value = "";
             }
@@ -301,30 +322,27 @@
             msgBox.appendChild(msgCard);
             msgBox.scrollTop = msgBox.scrollHeight;
 
-            // RULE 1: Direct Seen -> 1 Minute (60s) Auto Delete
             const seenTimer = setTimeout(() => {
                 removeMsgElement(msgCard);
             }, 60000);
 
-            // RULE 2: Non-Seen / Offline -> 3 Hours Auto Delete
             setTimeout(() => {
                 clearTimeout(seenTimer);
                 removeMsgElement(msgCard);
             }, 10800000);
         });
 
-        // START CALL LOGIC (AUDIO / VIDEO)
         function startCall(type) {
-            isCallActive = true; // Set active call flag to true
+            isCallActive = true;
             document.getElementById('call-title').innerText = "🔒 " + type;
             document.getElementById('call-modal').style.display = 'flex';
         }
 
-        // END CALL LOGIC
         function endCall() {
-            isCallActive = false; // Reset call flag
+            isCallActive = false;
             document.getElementById('call-modal').style.display = 'none';
         }
     </script>
 </body>
 </html>
+"""
