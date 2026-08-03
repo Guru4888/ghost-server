@@ -16,7 +16,7 @@
         .calc-btn:active { background: #30363d; }
         .calc-btn.operator { background: #1f6feb; }
 
-        /* Common Box Style for Master Login & Room Portal */
+        /* Common Box Style */
         .portal-box { background: #161b22; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 320px; text-align: center; border: 1px solid #30363d; }
         .portal-box input { width: 100%; padding: 12px; margin: 10px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; }
         .portal-box button { width: 100%; padding: 12px; background: #238636; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 10px; }
@@ -26,7 +26,7 @@
 </head>
 <body>
 
-    <!-- 1. FAKE CALCULATOR SCREEN -->
+    <!-- 1. FAKE CALCULATOR -->
     <div id="calculator-screen">
         <div id="calc-display">0</div>
         <div class="calc-buttons">
@@ -53,7 +53,7 @@
         </div>
     </div>
 
-    <!-- 2. MASTER LOGIN PASSWORD SCREEN (Calculator ke baad khulega) -->
+    <!-- 2. MASTER LOGIN PASSWORD SCREEN -->
     <div id="master-login-screen" class="hidden">
         <div class="portal-box">
             <h2>🔒 System Access</h2>
@@ -64,7 +64,7 @@
         </div>
     </div>
 
-    <!-- 3. ROOM NAME & ROOM PASSWORD SCREEN (Master Login ke baad) -->
+    <!-- 3. ROOM NAME & ROOM PASSWORD SCREEN -->
     <div id="room-portal-screen" class="hidden">
         <div class="portal-box">
             <h2>🛡️ Ghost Tunnel Room</h2>
@@ -78,7 +78,6 @@
     <script>
         let inputSequence = "";
         const targetSequence = "C05001193024CC=";
-        const correctMasterPassword = "123"; // Yahan aap apna jo marzi Master Password rakh sakte ho (Abhi ke liye '123' set hai)
 
         function pressButton(val) {
             let display = document.getElementById("calc-display");
@@ -109,13 +108,25 @@
             }
         }
 
-        function verifyMasterPassword() {
+        async function verifyMasterPassword() {
             const enteredPass = document.getElementById("masterPassword").value;
-            if (enteredPass === correctMasterPassword) {
-                document.getElementById("master-login-screen").classList.add("hidden");
-                document.getElementById("room-portal-screen").classList.remove("hidden");
-            } else {
-                document.getElementById("loginError").innerText = "Incorrect Master Password!";
+            
+            try {
+                let response = await fetch('/verify-master', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: enteredPass })
+                });
+
+                let result = await response.json();
+                if (response.ok && result.status === "success") {
+                    document.getElementById("master-login-screen").classList.add("hidden");
+                    document.getElementById("room-portal-screen").classList.remove("hidden");
+                } else {
+                    document.getElementById("loginError").innerText = "Incorrect Master Password!";
+                }
+            } catch (err) {
+                document.getElementById("loginError").innerText = "Server error, try again!";
             }
         }
 
@@ -123,8 +134,8 @@
             const rName = document.getElementById("roomName").value;
             const rPass = document.getElementById("roomPass").value;
             if(rName && rPass) {
-                alert("Connecting to secure room: " + rName);
-                // Yahan aap apna chat room ka logic ya redirect lagwa sakte hain
+                // Aap ise apne chat page par bhej sakte hain ya session set kar sakte hain
+                window.location.href = "/chat";
             } else {
                 alert("Please enter both Room Name and Password!");
             }
