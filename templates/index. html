@@ -8,7 +8,6 @@
         body { background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .hidden { display: none !important; }
         
-        /* Calculator Style */
         #calculator-screen { background: #161b22; padding: 20px; border-radius: 12px; width: 280px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
         #calc-display { width: 100%; height: 50px; background: #010409; color: #58a6ff; font-size: 24px; text-align: right; padding: 10px; box-sizing: border-box; margin-bottom: 15px; border-radius: 6px; border: 1px solid #30363d; }
         .calc-buttons { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
@@ -16,7 +15,6 @@
         .calc-btn:active { background: #30363d; }
         .calc-btn.operator { background: #1f6feb; }
 
-        /* Common Box Style */
         .portal-box { background: #161b22; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 320px; text-align: center; border: 1px solid #30363d; }
         .portal-box input { width: 100%; padding: 12px; margin: 10px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; }
         .portal-box button { width: 100%; padding: 12px; background: #238636; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 10px; }
@@ -26,7 +24,6 @@
 </head>
 <body>
 
-    <!-- 1. FAKE CALCULATOR -->
     <div id="calculator-screen">
         <div id="calc-display">0</div>
         <div class="calc-buttons">
@@ -53,7 +50,6 @@
         </div>
     </div>
 
-    <!-- 2. MASTER LOGIN PASSWORD SCREEN -->
     <div id="master-login-screen" class="hidden">
         <div class="portal-box">
             <h2>🔒 System Access</h2>
@@ -64,7 +60,6 @@
         </div>
     </div>
 
-    <!-- 3. ROOM NAME & ROOM PASSWORD SCREEN -->
     <div id="room-portal-screen" class="hidden">
         <div class="portal-box">
             <h2>🛡️ Ghost Tunnel Room</h2>
@@ -142,3 +137,4 @@
     </script>
 </body>
 </html>
+
