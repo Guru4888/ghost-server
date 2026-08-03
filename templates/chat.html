@@ -150,16 +150,25 @@
 </head>
 <body>
 
-    <!-- Access Reserved Room Modal -->
+    <!-- Access Reserved Room Modal (AUTOFILL COMPLETELY DISABLED) -->
     <div id="room-modal">
         <div class="modal-box">
             <h2>🔑 Access Reserved Room</h2>
             <p style="font-size: 0.8rem; color: #8b949e;">Apne reserved room ka name aur password daalein:</p>
             
-            <input type="text" id="room-name" placeholder="Reserved Room Name (e.g. SecretVault)">
-            <input type="password" id="room-pass" placeholder="Room Secret Password">
-            
-            <button class="btn-send" style="width: 100%; margin-top: 5px;" onclick="joinReservedRoom()">Enter Reserved Room</button>
+            <form onsubmit="return false;" autocomplete="off">
+                <!-- Fake inputs to trick browser password managers -->
+                <input type="text" style="display:none" name="fakeusernameremembered"/>
+                <input type="password" style="display:none" name="fakepasswordremembered"/>
+
+                <input type="text" id="room-name" placeholder="Reserved Room Name (e.g. SecretVault)" 
+                       autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false">
+                       
+                <input type="password" id="room-pass" placeholder="Room Secret Password" 
+                       autocomplete="new-password" autocorrect="off" autocapitalize="off" spellcheck="false">
+                
+                <button class="btn-send" style="width: 100%; margin-top: 5px;" onclick="joinReservedRoom()">Enter Reserved Room</button>
+            </form>
         </div>
     </div>
 
@@ -168,8 +177,10 @@
         <div class="modal-box">
             <h2>🔒 Vault Locked</h2>
             <p style="color: #8b949e; font-size: 0.85rem; margin-bottom: 15px;">Enter Key to Unlock Chat</p>
-            <input type="password" id="unlock-pass" placeholder="Enter PIN">
-            <button class="btn-send" style="width: 100%;" onclick="unlockChat()">Unlock Tunnel</button>
+            <form onsubmit="return false;" autocomplete="off">
+                <input type="password" id="unlock-pass" placeholder="Enter PIN" autocomplete="new-password">
+                <button class="btn-send" style="width: 100%; margin-top:8px;" onclick="unlockChat()">Unlock Tunnel</button>
+            </form>
         </div>
     </div>
 
@@ -199,7 +210,9 @@
         <div id="messages"></div>
 
         <div class="input-box">
-            <input type="text" id="msg-input" placeholder="Type a message..." onkeypress="if(event.key==='Enter') sendMessage()" style="margin-bottom:0;">
+            <input type="text" id="msg-input" placeholder="Type a message..." 
+                   autocomplete="off" autocorrect="off" spellcheck="false" 
+                   onkeypress="if(event.key==='Enter') sendMessage()" style="margin-bottom:0;">
             <button class="btn-send" onclick="sendMessage()">Send</button>
         </div>
     </div>
@@ -209,18 +222,15 @@
         let myAgentID = "Agent_" + Math.floor(1000 + Math.random() * 9000);
         let currentRoom = "";
 
-        // ⚡ INSTANT FAKE 404 ON LOCK / TAB SWITCH / BACKGROUND
-        function triggerFake404() {
-            if(socket) socket.disconnect();
-            window.location.href = "/logout";
-        }
+        let isInitialized = false;
+        setTimeout(() => { isInitialized = true; }, 2000);
 
         document.addEventListener('visibilitychange', function() {
-            if (document.visibilityState === 'hidden') triggerFake404();
+            if (document.visibilityState === 'hidden' && isInitialized) {
+                if(socket) socket.disconnect();
+                window.location.href = "/logout";
+            }
         });
-
-        window.addEventListener('pagehide', triggerFake404);
-        window.addEventListener('blur', triggerFake404);
 
         function joinReservedRoom() {
             const room = document.getElementById('room-name').value.trim();
@@ -289,12 +299,12 @@
             msgBox.appendChild(msgCard);
             msgBox.scrollTop = msgBox.scrollHeight;
 
-            // RULE 1: Direct Seen / Active Screen -> 1 Minute (60,000 ms) Auto Delete
+            // RULE 1: Direct Seen -> 1 Minute (60s) Auto Delete
             const seenTimer = setTimeout(() => {
                 removeMsgElement(msgCard);
             }, 60000);
 
-            // RULE 2: Fallback Unseen / Offline Mode -> 3 Hours (10,800,000 ms) Auto Delete
+            // RULE 2: Non-Seen / Offline -> 3 Hours Auto Delete
             setTimeout(() => {
                 clearTimeout(seenTimer);
                 removeMsgElement(msgCard);
