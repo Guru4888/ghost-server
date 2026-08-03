@@ -9,12 +9,28 @@
         body {
             background-color: #121212;
             color: #ffffff;
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
             height: 100vh;
             margin: 0;
+        }
+        #name-modal {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 10;
+        }
+        .modal-box {
+            background: #1e1e1e;
+            padding: 25px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
         }
         #chat-screen {
             display: flex;
@@ -36,10 +52,34 @@
             flex-grow: 1;
             overflow-y: auto;
             border: 1px solid #333;
-            padding: 10px;
+            padding: 12px;
             margin-bottom: 15px;
             border-radius: 8px;
             background: #121212;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+        .msg-card {
+            padding: 8px 12px;
+            border-radius: 8px;
+            max-width: 75%;
+            word-wrap: break-word;
+        }
+        .my-msg {
+            background: #3700b3;
+            align-self: flex-end;
+            text-align: right;
+        }
+        .other-msg {
+            background: #2d2d2d;
+            align-self: flex-start;
+        }
+        .user-name {
+            font-size: 0.75em;
+            color: #aaa;
+            margin-bottom: 2px;
+            display: block;
         }
         .input-box {
             display: flex;
@@ -63,36 +103,65 @@
             cursor: pointer;
             font-weight: bold;
         }
-        button:hover {
-            background: #a362ea;
-        }
     </style>
 </head>
 <body>
 
+    <!-- Username Popup -->
+    <div id="name-modal">
+        <div class="modal-box">
+            <h2>🎭 Choose Your Alias</h2>
+            <input type="text" id="username-input" placeholder="Enter your Name/ID...">
+            <br><br>
+            <button onclick="setUsername()">Join Chat</button>
+        </div>
+    </div>
+
+    <!-- Chat Screen -->
     <div id="chat-screen">
         <h2>👻 Ghost Secret Tunnel</h2>
         <div id="messages"></div>
         <div class="input-box">
-            <input type="text" id="msg-input" placeholder="Type a message...">
+            <input type="text" id="msg-input" placeholder="Type a message..." onkeypress="if(event.key==='Enter') sendMessage()">
             <button onclick="sendMessage()">Send</button>
         </div>
     </div>
 
     <script>
         const socket = io();
+        let myUsername = "Anonymous";
+
+        function setUsername() {
+            const input = document.getElementById('username-input');
+            if (input.value.trim() !== "") {
+                myUsername = input.value.trim();
+                document.getElementById('name-modal').style.display = 'none';
+            }
+        }
 
         function sendMessage() {
             const input = document.getElementById('msg-input');
             if (input.value.trim() !== "") {
-                socket.emit('send_message', { msg: input.value });
+                socket.emit('send_message', { 
+                    user: myUsername, 
+                    msg: input.value 
+                });
                 input.value = "";
             }
         }
 
         socket.on('receive_message', (data) => {
             const msgBox = document.getElementById('messages');
-            msgBox.innerHTML += `<p style="margin: 5px 0;"><b>Peer:</b> ${data.msg}</p>`;
+            const isMe = data.user === myUsername;
+            
+            const msgHtml = `
+                <div class="msg-card ${isMe ? 'my-msg' : 'other-msg'}">
+                    <span class="user-name">${data.user}</span>
+                    <span>${data.msg}</span>
+                </div>
+            `;
+            
+            msgBox.innerHTML += msgHtml;
             msgBox.scrollTop = msgBox.scrollHeight;
         });
     </script>
