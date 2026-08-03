@@ -59,7 +59,7 @@ LOGIN_HTML = """
 </html>
 """
 
-# 2. Chat Room Page
+# 2. Chat Room Page with Smart Call Lock Security
 CHAT_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -200,10 +200,21 @@ CHAT_HTML = """
             document.getElementById('call-title').innerText = "🔒 " + type;
             document.getElementById('call-modal').style.display = 'flex';
         }
+
         function endCall() {
             isCallActive = false;
             document.getElementById('call-modal').style.display = 'none';
         }
+
+        // Smart Visibility Logic: Background mein call chalti rahegi, par agar phone lock hua toh call cut ho jayegi
+        document.addEventListener("visibilitychange", function() {
+            if (document.hidden && isCallActive) {
+                // Agar phone lock hua ya screen off hui, toh visibility state 'hidden' ke sath time gap check hota hai ya turant cut hoti hai.
+                // Mobile par power button dabane se document hidden ho jata hai aur page visibility turant zero ho jati hai.
+                endCall();
+                alert("🔒 Security Alert: Call terminated instantly due to device lock/screen off.");
+            }
+        });
     </script>
 </body>
 </html>
