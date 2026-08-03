@@ -10,7 +10,7 @@ APP_PASSWORD = "guru&guru16230"
 
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
-# 1. Master Password Login Page
+# 1. Master Password Login Page with Anti-Autofill Security
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -31,11 +31,20 @@ LOGIN_HTML = """
     <div class="portal-box">
         <h2>🔒 System Access</h2>
         <p style="color: #8b949e; font-size: 13px; margin-bottom: 15px;">Enter Master App Password</p>
-        <input type="password" id="masterPassword" placeholder="Enter Access Password">
+        <!-- Anti-autofill attributes added -->
+        <input type="password" id="masterPassword" placeholder="Enter Access Password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly');">
         <button onclick="verifyMasterPassword()">Access Portal</button>
         <div id="loginError" class="error-msg"></div>
     </div>
     <script>
+        // Page load ya back aane par password field ko force blank karne ke liye
+        window.addEventListener('pageshow', function(event) {
+            const passInput = document.getElementById("masterPassword");
+            if (passInput) {
+                passInput.value = "";
+            }
+        });
+
         async function verifyMasterPassword() {
             const enteredPass = document.getElementById("masterPassword").value;
             try {
@@ -59,7 +68,7 @@ LOGIN_HTML = """
 </html>
 """
 
-# 2. Chat Room Page with Smart Call Lock Security
+# 2. Chat Room Page
 CHAT_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -207,9 +216,13 @@ CHAT_HTML = """
         }
 
         document.addEventListener("visibilitychange", function() {
-            if (document.hidden && isCallActive) {
-                endCall();
-                alert("🔒 Security Alert: Call terminated instantly due to device lock/screen off.");
+            if (document.hidden) {
+                if (isCallActive) {
+                    endCall();
+                }
+                fetch('/logout').then(() => {
+                    window.location.href = "/";
+                });
             }
         });
     </script>
@@ -219,8 +232,6 @@ CHAT_HTML = """
 
 @app.route('/', methods=['GET'])
 def home():
-    # Fix: Har baar root par aane par session clear kar denge taaki pehle Master Login page hi khule
-    session.clear()
     return LOGIN_HTML
 
 @app.route('/verify-master', methods=['POST'])
@@ -240,17 +251,7 @@ def chat():
 @app.route('/logout')
 def logout():
     session.clear()
-    return redirect(url_for('home'))
-
-@socketio.on('join_room')
-def handle_join_room(data):
-    room = data.get('room')
-    if room: join_room(room)
-
-@socketio.on('send_message')
-def handle_send_message(data):
-    room = data.get('room')
-    if room: emit('receive_message', data, to=room)
+    return jsonify({"status": "logged_out"})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
