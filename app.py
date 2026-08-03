@@ -5,12 +5,10 @@ import os
 app = Flask(__name__)
 app.secret_key = "ghost_super_secret_key_998877"
 
-# Master Admin & Registered Users Database
 REGISTERED_USERS = {
     "admin": "guru&guru16230"
 }
 
-# Security Trackers (No Message or Call Logs Stored for 0% Trace)
 FAILED_ATTEMPTS = {}       
 BLOCKED_IPS = {}           
 BLOCKED_USERS = {}         
@@ -19,7 +17,6 @@ USER_SESSIONS = {}
 
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
-# Security Headers to Prevent Client-Side Caching
 @app.after_request
 def add_security_headers(response):
     response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
@@ -27,7 +24,7 @@ def add_security_headers(response):
     response.headers["Expires"] = "0"
     return response
 
-# 1. Login & Registration Portal HTML
+# Updated Login HTML with Permanent Unblock / Forgot Link & Button
 LOGIN_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -48,6 +45,7 @@ LOGIN_HTML = """
         .form-section.active { display: block; }
         .error-msg { color: #f85149; font-size: 13px; margin-top: 5px; }
         .success-msg { color: #3fb950; font-size: 13px; margin-top: 5px; }
+        .unblock-btn-link { background: none; border: none; color: #58a6ff; font-size: 12px; cursor: pointer; text-decoration: underline; margin-top: 12px; width: 100%; }
     </style>
 </head>
 <body>
@@ -59,10 +57,11 @@ LOGIN_HTML = """
         </div>
 
         <div id="login-form" class="form-section active">
-            <input type="text" id="login-user" placeholder="Username" autocomplete="off" name="no-autofill-user">
-            <input type="password" id="login-pass" placeholder="Password" autocomplete="new-password" name="no-autofill-pass">
+            <input type="text" id="login-user" placeholder="Username" autocomplete="off">
+            <input type="password" id="login-pass" placeholder="Password" autocomplete="new-password">
             <button onclick="loginUser()">Login to Chat</button>
             <div id="loginError" class="error-msg"></div>
+            <button class="unblock-btn-link" onclick="requestUnblockPrompt()">Forgot / Request Unblock Access?</button>
         </div>
 
         <div id="register-form" class="form-section">
@@ -74,41 +73,6 @@ LOGIN_HTML = """
     </div>
 
     <script>
-        window.addEventListener("pageshow", function(event) {
-            document.getElementById("login-user").value = "";
-            document.getElementById("login-pass").value = "";
-            document.getElementById("reg-user").value = "";
-            document.getElementById("reg-pass").value = "";
-        });
-
-        async function checkBlockStatus() {
-            try {
-                let res = await fetch('/check-status');
-                let data = await res.json();
-                if(data.blocked) { 
-                    showBlockedScreen(data.requested, data.username); 
-                }
-            } catch(e) {}
-        }
-
-        function showBlockedScreen(alreadyRequested, reqUsername) {
-            const box = document.getElementById('main-container');
-            document.getElementById('portal-tabs').style.display = 'none';
-            box.innerHTML = `
-                <h2 style="color: #f85149;">🚨 Account & Device Blocked</h2>
-                <p style="color: #8b949e; font-size: 13px; margin: 10px 0;">Target Account: <b style="color:#58a6ff;">${reqUsername || 'Unknown'}</b></p>
-                <p style="color: #8b949e; font-size: 12px; margin-bottom: 15px;">5 incorrect attempts detected. Both your Username and Device IP have been locked by security protocols.</p>
-                <button id="req-btn" onclick="sendUnblockRequest()" ${alreadyRequested ? 'disabled style="background:#30363d; cursor:not-allowed;"' : ''}>
-                    ${alreadyRequested ? '✅ Request Sent to Admin' : '📤 Request Admin to Unblock'}
-                </button>
-            `;
-        }
-
-        async function sendUnblockRequest() {
-            await fetch('/request-unblock', { method: 'POST', headers: { 'Content-Type': 'application/json' } });
-            location.reload();
-        }
-
         function switchTab(tab) {
             document.querySelectorAll('.form-section').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -118,6 +82,23 @@ LOGIN_HTML = """
             } else {
                 document.getElementById('register-form').classList.add('active');
                 event.target.classList.add('active');
+            }
+        }
+
+        async function requestUnblockPrompt() {
+            let u = prompt("Enter your Username or ID to send unblock request to Admin:");
+            if(u && u.trim() !== "") {
+                let res = await fetch('/manual-unblock-request', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: u.trim() })
+                });
+                let data = await res.json();
+                if(data.status === "success") {
+                    alert("✅ Unblock request successfully sent to Admin!");
+                } else {
+                    alert("❌ Failed to send request.");
+                }
             }
         }
 
@@ -133,7 +114,7 @@ LOGIN_HTML = """
             if (response.ok && result.status === "success") {
                 window.location.href = "/chat";
             } else if (result.status === "blocked") {
-                showBlockedScreen(false, user);
+                alert("🚨 Your account or device is blocked by admin security.");
             } else {
                 document.getElementById("loginError").innerText = result.message || "Login failed!";
             }
@@ -158,14 +139,11 @@ LOGIN_HTML = """
                 msgEl.innerText = result.message || "Registration failed!";
             }
         }
-
-        checkBlockStatus();
     </script>
 </body>
 </html>
 """
 
-# 2. Admin Panel Page HTML
 ADMIN_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -189,15 +167,11 @@ ADMIN_HTML = """
     <div class="admin-container">
         <div class="admin-box">
             <h2>🛡️ Control Panel (Strict 0% Logs Mode)</h2>
-            <p style="color: #8b949e; font-size: 12px;">Unblock Requests (ID + Device Locked)</p>
+            <p style="color: #8b949e; font-size: 12px;">Unblock & Reset Requests</p>
             <ul id="requests-list"></ul>
             <div style="margin-top: 15px; border-top: 1px solid #30363d; padding-top: 10px;">
                 <p style="color: #8b949e; font-size: 12px;">Active Users Management</p>
                 <ul id="users-list"></ul>
-            </div>
-            <div style="background: #21262d; padding: 12px; border-radius: 6px; margin-top: 15px; border: 1px solid #30363d; text-align: center;">
-                <p style="color: #3fb950; margin: 0; font-size: 13px; font-weight: bold;">🔒 Zero-Trace Policy Active</p>
-                <p style="color: #8b949e; margin: 5px 0 0 0; font-size: 11px;">Server side and Client side memory wiping active. No residue or local cache traces are kept.</p>
             </div>
             <a href="/chat" class="back-link">⬅ Chat</a>
             <a href="/" class="back-link" style="color: #f85149;">Logout</a>
@@ -212,7 +186,7 @@ ADMIN_HTML = """
                 let reqListEl = document.getElementById('requests-list');
                 reqListEl.innerHTML = dataReq.requests.length === 0 ? "<p style='color: #8b949e; text-align:center; font-size:12px;'>No pending requests.</p>" : "";
                 dataReq.requests.forEach(req => {
-                    reqListEl.innerHTML += `<li><div><b>👤 ${req.username}</b></div> <button class="action-btn" onclick="approveUnblock('${req.username}', '${req.ip}')">Unblock ID+IP</button></li>`;
+                    reqListEl.innerHTML += `<li><div><b>👤 ${req.username}</b></div> <button class="action-btn" onclick="approveUnblock('${req.username}', '${req.ip}')">Unblock</button></li>`;
                 });
 
                 let resUsr = await fetch('/get-all-users');
@@ -243,12 +217,8 @@ ADMIN_HTML = """
                     body: JSON.stringify({ username: username, admin_password: adminPass })
                 });
                 let data = await res.json();
-                if (data.status === "success") {
-                    alert("User deleted successfully!");
-                    fetchAdminData();
-                } else {
-                    alert(data.message || "Deletion failed!");
-                }
+                if (data.status === "success") { alert("User deleted!"); fetchAdminData(); }
+                else { alert(data.message || "Failed!"); }
             }
         }
 
@@ -269,7 +239,6 @@ ADMIN_HTML = """
 </html>
 """
 
-# 3. Chat Room Page HTML (Bulletproof Client-Side Anti-Trace Protections)
 CHAT_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -280,7 +249,7 @@ CHAT_HTML = """
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         * { box-sizing: border-box; }
-        body { background-color: #0d1117; color: #ffffff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; user-select: none; -webkit-user-select: none; }
+        body { background-color: #0d1117; color: #ffffff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; user-select: none; }
         #room-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: flex; justify-content: center; align-items: center; z-index: 999; }
         .modal-box { background: #161b22; padding: 25px; border-radius: 12px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.7); border: 1px solid #30363d; width: 90%; max-width: 400px; }
         #chat-screen { display: flex; width: 95%; max-width: 500px; height: 85vh; background: #161b22; border-radius: 12px; flex-direction: column; border: 1px solid #30363d; overflow: hidden; }
@@ -299,7 +268,7 @@ CHAT_HTML = """
         .other-msg { background: #21262d; color: #c9d1d9; align-self: flex-start; border: 1px solid #30363d; }
         .user-id { font-size: 0.75em; color: #8b949e; margin-bottom: 3px; display: block; font-weight: bold; }
         .input-box { display: flex; padding: 12px; background: #21262d; gap: 8px; border-top: 1px solid #30363d; }
-        input { width: 100%; padding: 10px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; outline: none; user-select: text; -webkit-user-select: text; }
+        input { width: 100%; padding: 10px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; outline: none; user-select: text; }
         button.btn-send { padding: 10px 18px; background: #238636; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
     </style>
 </head>
@@ -321,8 +290,8 @@ CHAT_HTML = """
             </div>
             <div class="call-btns">
                 <button id="e2ee-btn" class="btn-call btn-e2ee" onclick="toggleE2EE()">🔐 E2EE: OFF</button>
-                <button class="btn-call btn-audio" onclick="startAudioCall()">📞 Audio</button>
-                <button class="btn-call btn-video" onclick="startVideoCall()">📹 Video</button>
+                <button class="btn-call btn-audio" onclick="alert('Secure Audio Call Started')">📞 Audio</button>
+                <button class="btn-call btn-video" onclick="alert('Secure Video Call Started')">📹 Video</button>
                 <button id="admin-panel-btn" class="btn-call btn-admin" onclick="window.location.href='/admin-panel-guru'">🛡️ Admin</button>
             </div>
         </div>
@@ -339,27 +308,10 @@ CHAT_HTML = """
         let myUsername = "User";
         let isE2EEActive = false;
 
-        // --- CLIENT-SIDE ANTI-TRACE & ANTI-INSPECTION PROTECTIONS ---
-        // Disable Right-Click context menu to prevent manual inspection/saving
         document.addEventListener('contextmenu', event => event.preventDefault());
 
-        // Disable Common Keyboard Shortcuts for Inspect / Save (F12, Ctrl+Shift+I, Ctrl+U, Ctrl+S)
-        document.addEventListener('keydown', function(event) {
-            if (
-                event.keyCode === 123 || 
-                (event.ctrlKey && event.shiftKey && (event.keyCode === 73 || event.keyCode === 74)) || 
-                (event.ctrlKey && (event.keyCode === 85 || event.keyCode === 83))
-            ) {
-                event.preventDefault();
-                return false;
-            }
-        });
-        // -------------------------------------------------------------
-
-        // --- INSTANT KILL-SWITCH (Power Button / Background / Screen Off Logout) ---
         async function triggerInstantLogout() {
             try {
-                // Clear local memory/session caches instantly on exit
                 localStorage.clear();
                 sessionStorage.clear();
                 await fetch('/logout-session', { method: 'POST' });
@@ -367,16 +319,8 @@ CHAT_HTML = """
             window.location.href = "/";
         }
 
-        document.addEventListener("visibilitychange", () => {
-            if (document.hidden) {
-                triggerInstantLogout();
-            }
-        });
-
-        window.addEventListener("blur", () => {
-            triggerInstantLogout();
-        });
-        // --------------------------------------------------------------------------
+        document.addEventListener("visibilitychange", () => { if (document.hidden) triggerInstantLogout(); });
+        window.addEventListener("blur", () => { triggerInstantLogout(); });
 
         async function initChat() {
             try {
@@ -391,36 +335,14 @@ CHAT_HTML = """
         function toggleE2EE() {
             isE2EEActive = !isE2EEActive;
             const btn = document.getElementById('e2ee-btn');
-            if (isE2EEActive) {
-                btn.className = "btn-call btn-e2ee active";
-                btn.innerText = "🔐 E2EE: ON";
-            } else {
-                btn.className = "btn-call btn-e2ee";
-                btn.innerText = "🔐 E2EE: OFF";
-            }
+            if (isE2EEActive) { btn.className = "btn-call btn-e2ee active"; btn.innerText = "🔐 E2EE: ON"; }
+            else { btn.className = "btn-call btn-e2ee"; btn.innerText = "🔐 E2EE: OFF"; }
         }
 
-        function startAudioCall() {
-            alert("📞 Direct Secure Audio Call initiated (0 Call Logs saved).");
-        }
-
-        function startVideoCall() {
-            alert("📹 Direct Secure Video Call initiated (0 Call Logs saved).");
-        }
-
-        function encryptText(text) {
-            if (!isE2EEActive) return text;
-            return "ENC[" + btoa(text) + "]";
-        }
-
+        function encryptText(text) { return !isE2EEActive ? text : "ENC[" + btoa(text) + "]"; }
         function decryptText(text) {
             if (text.startsWith("ENC[")) {
-                try {
-                    let encoded = text.substring(4, text.length - 1);
-                    return "🔒 " + atob(encoded) + " (E2EE)";
-                } catch(e) {
-                    return text;
-                }
+                try { return "🔒 " + atob(text.substring(4, text.length - 1)) + " (E2EE)"; } catch(e) { return text; }
             }
             return text;
         }
@@ -439,8 +361,7 @@ CHAT_HTML = """
         function sendMessage() {
             const input = document.getElementById('msg-input');
             if (input.value.trim() !== "") {
-                let finalMsg = encryptText(input.value);
-                socket.emit('send_message', { room: currentRoom, user: myUsername, msg: finalMsg, timestamp: Date.now() });
+                socket.emit('send_message', { room: currentRoom, user: myUsername, msg: encryptText(input.value), timestamp: Date.now() });
                 input.value = "";
             }
         }
@@ -448,30 +369,19 @@ CHAT_HTML = """
         socket.on('receive_message', (data) => {
             const now = Date.now();
             const msgTimestamp = data.timestamp || now;
-            const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
-
-            if ((now - msgTimestamp) > THREE_HOURS_MS) {
-                return; 
-            }
+            if ((now - msgTimestamp) > 3 * 60 * 60 * 1000) return;
 
             const msgBox = document.getElementById('messages');
             const isMe = data.user === myUsername;
             const msgCard = document.createElement('div');
             msgCard.className = `msg-card ${isMe ? 'my-msg' : 'other-msg'}`;
-            
-            let readableMsg = decryptText(data.msg);
-            msgCard.innerHTML = `<span class="user-id">${data.user}</span><div>${readableMsg}</div>`;
+            msgCard.innerHTML = `<span class="user-id">${data.user}</span><div>${decryptText(data.msg)}</div>`;
             msgBox.appendChild(msgCard);
             msgBox.scrollTop = msgBox.scrollHeight;
 
             let remainingLife = 60000 - (now - msgTimestamp);
             if (remainingLife < 1000) remainingLife = 1000;
-
-            setTimeout(() => { 
-                if(msgCard.parentNode) {
-                    msgCard.parentNode.removeChild(msgCard);
-                }
-            }, remainingLife);
+            setTimeout(() => { if(msgCard.parentNode) msgCard.parentNode.removeChild(msgCard); }, remainingLife);
         });
     </script>
 </body>
@@ -486,19 +396,15 @@ def logout_session():
     session.clear()
     return jsonify({"status": "logged_out"})
 
-@app.route('/check-status')
-def check_status():
+@app.route('/manual-unblock-request', methods=['POST'])
+def manual_unblock_request():
+    data = request.json
+    username = data.get('username', '').strip()
     ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-    is_blocked = ip in BLOCKED_IPS
-    req_username = UNBLOCK_REQUESTS.get(ip, {}).get("username", "")
-    return jsonify({"blocked": is_blocked, "requested": ip in UNBLOCK_REQUESTS, "username": req_username})
-
-@app.route('/request-unblock', methods=['POST'])
-def request_unblock():
-    ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-    if ip in BLOCKED_IPS and ip in UNBLOCK_REQUESTS: 
-        UNBLOCK_REQUESTS[ip]["status"] = "Pending"
-    return jsonify({"status": "success"})
+    if username:
+        UNBLOCK_REQUESTS["manual_" + username] = {"username": username, "status": "Pending"}
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "Invalid username"}), 400
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -529,11 +435,9 @@ def login():
         FAILED_ATTEMPTS[ip] = FAILED_ATTEMPTS.get(ip, 0) + 1
         if FAILED_ATTEMPTS[ip] >= 5:
             BLOCKED_IPS[ip] = True
-            if u:
-                BLOCKED_USERS[u] = True
+            if u: BLOCKED_USERS[u] = True
             UNBLOCK_REQUESTS[ip] = {"username": u or "Unknown", "status": "Pending"}
             return jsonify({"status": "blocked"}), 403
-            
         return jsonify({"status": "error", "message": "Invalid credentials!"}), 401
 
 @app.route('/check-admin-session')
@@ -561,20 +465,12 @@ def delete_user():
     data = request.json
     target_user = data.get('username')
     admin_pass = data.get('admin_password')
-    
     if REGISTERED_USERS.get("admin") != admin_pass:
         return jsonify({"status": "error", "message": "Incorrect Admin Password!"}), 401
-    
     if target_user in REGISTERED_USERS and target_user != "admin":
         del REGISTERED_USERS[target_user]
         BLOCKED_USERS.pop(target_user, None)
-        if target_user in USER_SESSIONS:
-            ip = USER_SESSIONS[target_user]
-            BLOCKED_IPS.pop(ip, None)
-            UNBLOCK_REQUESTS.pop(ip, None)
-            del USER_SESSIONS[target_user]
         return jsonify({"status": "success"})
-    
     return jsonify({"status": "error", "message": "User not found!"}), 404
 
 @app.route('/instant-block', methods=['POST'])
@@ -582,12 +478,7 @@ def instant_block():
     if not session.get('is_admin', False): return jsonify({"status": "unauthorized"}), 403
     u = request.json.get('username')
     BLOCKED_USERS[u] = True
-    if u in USER_SESSIONS:
-        ip = USER_SESSIONS[u]
-        BLOCKED_IPS[ip] = True
-        UNBLOCK_REQUESTS[ip] = {"username": u, "status": "Pending"}
-    else:
-        UNBLOCK_REQUESTS["manual_" + u] = {"username": u, "status": "Pending"}
+    UNBLOCK_REQUESTS["manual_" + u] = {"username": u, "status": "Pending"}
     return jsonify({"status": "success"})
 
 @app.route('/approve-unblock', methods=['POST'])
@@ -596,16 +487,12 @@ def approve_unblock():
     data = request.json
     ip = data.get('ip')
     username = data.get('username')
-    
-    if ip and not ip.startswith("manual_"):
+    if ip:
         BLOCKED_IPS.pop(ip, None)
         UNBLOCK_REQUESTS.pop(ip, None)
-        FAILED_ATTEMPTS[ip] = 0
-    
     if username:
         BLOCKED_USERS.pop(username, None)
         UNBLOCK_REQUESTS.pop("manual_" + username, None)
-
     return jsonify({"status": "success"})
 
 @app.route('/chat')
@@ -618,8 +505,7 @@ def chat():
 def handle_join(data): join_room(data['room'])
 
 @socketio.on('send_message')
-def handle_message(data):
-    emit('receive_message', data, to=data['room'])
+def handle_message(data): emit('receive_message', data, to=data['room'])
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
