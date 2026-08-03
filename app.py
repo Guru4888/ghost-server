@@ -269,6 +269,8 @@ CHAT_HTML = """
         .input-box { display: flex; padding: 12px; background: #21262d; gap: 8px; border-top: 1px solid #30363d; }
         input { width: 100%; padding: 10px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; outline: none; user-select: text; }
         button.btn-send { padding: 10px 18px; background: #238636; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        #video-container { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; justify-content: center; align-items: center; flex-direction: column; }
+        video { width: 80%; max-width: 400px; border-radius: 8px; background: black; margin-bottom: 10px; }
     </style>
 </head>
 <body>
@@ -281,6 +283,12 @@ CHAT_HTML = """
         </div>
     </div>
 
+    <div id="video-container">
+        <video id="localVideo" autoplay playsinline muted></video>
+        <video id="remoteVideo" autoplay playsinline></video>
+        <button class="btn-send" style="background:#da3633;" onclick="endCall()">End Call</button>
+    </div>
+
     <div id="chat-screen">
         <div class="top-bar">
             <div>
@@ -289,8 +297,8 @@ CHAT_HTML = """
             </div>
             <div class="call-btns">
                 <button id="e2ee-btn" class="btn-call btn-e2ee" onclick="toggleE2EE()">🔐 E2EE: OFF</button>
-                <button class="btn-call btn-audio" onclick="alert('Secure Audio Call Started')">📞 Audio</button>
-                <button class="btn-call btn-video" onclick="alert('Secure Video Call Started')">📹 Video</button>
+                <button class="btn-call btn-audio" onclick="startCall('audio')">📞 Audio</button>
+                <button class="btn-call btn-video" onclick="startCall('video')">📹 Video</button>
                 <button id="admin-panel-btn" class="btn-call btn-admin" onclick="window.location.href='/admin-panel-guru'">🛡️ Admin</button>
             </div>
         </div>
@@ -305,6 +313,7 @@ CHAT_HTML = """
         const socket = io();
         let currentRoom = "";
         let myUsername = "User";
+        let localStream, peerConnection;
         
         let isE2EEActive = localStorage.getItem('ghost_e2ee') === 'true';
         updateE2EEButtonUI();
@@ -396,6 +405,76 @@ CHAT_HTML = """
             if (remainingLife < 1000) remainingLife = 1000;
             setTimeout(() => { if(msgCard.parentNode) msgCard.parentNode.removeChild(msgCard); }, remainingLife);
         });
+
+        // WebRTC Call Setup
+        const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
+        async function startCall(type) {
+            document.getElementById('video-container').style.display = 'flex';
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true });
+                document.getElementById('localVideo').srcObject = localStream;
+                
+                peerConnection = new RTCPeerConnection(servers);
+                localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+                peerConnection.ontrack = event => {
+                    document.getElementById('remoteVideo').srcObject = event.streams[0];
+                };
+
+                peerConnection.onicecandidate = event => {
+                    if (event.candidate) {
+                        socket.emit('ice_candidate', { room: currentRoom, candidate: event.candidate });
+                    }
+                };
+
+                let offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                socket.emit('offer', { room: currentRoom, offer: offer });
+            } catch (err) {
+                alert("Call permission denied or not supported.");
+                endCall();
+            }
+        }
+
+        socket.on('offer', async (offer) => {
+            document.getElementById('video-container').style.display = 'flex';
+            peerConnection = new RTCPeerConnection(servers);
+            localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            document.getElementById('localVideo').srcObject = localStream;
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+            peerConnection.ontrack = event => {
+                document.getElementById('remoteVideo').srcObject = event.streams[0];
+            };
+
+            peerConnection.onicecandidate = event => {
+                if (event.candidate) {
+                    socket.emit('ice_candidate', { room: currentRoom, candidate: event.candidate });
+                }
+            };
+
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+            let answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            socket.emit('answer', { room: currentRoom, answer: answer });
+        });
+
+        socket.on('answer', async (answer) => {
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+        });
+
+        socket.on('ice_candidate', async (candidate) => {
+            if (peerConnection) {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            }
+        });
+
+        function endCall() {
+            if (localStream) localStream.getTracks().forEach(track => track.stop());
+            if (peerConnection) peerConnection.close();
+            document.getElementById('video-container').style.display = 'none';
+        }
     </script>
 </body>
 </html>
@@ -519,6 +598,15 @@ def handle_join(data): join_room(data['room'])
 
 @socketio.on('send_message')
 def handle_message(data): emit('receive_message', data, to=data['room'])
+
+@socketio.on('offer')
+def handle_offer(data): emit('offer', data['offer'], to=data['room'], include_self=False)
+
+@socketio.on('answer')
+def handle_answer(data): emit('answer', data['answer'], to=data['room'], include_self=False)
+
+@socketio.on('ice_candidate')
+def handle_ice(data): emit('ice_candidate', data['candidate'], to=data['room'], include_self=False)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
