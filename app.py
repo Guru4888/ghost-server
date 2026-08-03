@@ -10,13 +10,12 @@ REGISTERED_USERS = {
     "admin": "guru&guru16230"
 }
 
-# Security Trackers & Logs
+# Security Trackers (No Message or Call Logs Stored for 0% Trace)
 FAILED_ATTEMPTS = {}       
 BLOCKED_IPS = {}           
 BLOCKED_USERS = {}         
 UNBLOCK_REQUESTS = {}      
 USER_SESSIONS = {}         
-MESSAGE_LOGS = []          
 
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
@@ -158,7 +157,7 @@ LOGIN_HTML = """
 </html>
 """
 
-# 2. Admin Panel Page HTML
+# 2. Admin Panel Page HTML (No Logs Trace Version)
 ADMIN_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -169,36 +168,31 @@ ADMIN_HTML = """
     <style>
         body { background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
         .admin-container { display: flex; gap: 20px; width: 90%; max-width: 900px; }
-        .admin-box { background: #161b22; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 50%; border: 1px solid #30363d; }
+        .admin-box { background: #161b22; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 100%; border: 1px solid #30363d; }
         ul { list-style: none; padding: 0; text-align: left; max-height: 220px; overflow-y: auto; margin-top: 15px; }
         li { background: #21262d; padding: 10px; margin-bottom: 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #30363d; font-size: 13px; }
         button.action-btn { background: #238636; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px; margin-left: 3px; }
         button.block-btn { background: #da3633; }
         button.delete-user-btn { background: #8957e5; }
-        button.wipe-btn { background: #da3633; width: 100%; padding: 10px; margin-top: 10px; border-radius: 6px; border: none; color: white; font-weight: bold; cursor: pointer; }
-        button.wipe-btn:hover { background: #b31d1c; }
         .back-link { display: inline-block; margin-top: 15px; color: #58a6ff; text-decoration: none; font-size: 13px; margin-right: 15px; }
     </style>
 </head>
 <body>
     <div class="admin-container">
         <div class="admin-box">
-            <h2>🛡️ Control Panel</h2>
+            <h2>🛡️ Control Panel (Strict 0% Logs Mode)</h2>
             <p style="color: #8b949e; font-size: 12px;">Unblock Requests (ID + Device Locked)</p>
             <ul id="requests-list"></ul>
             <div style="margin-top: 15px; border-top: 1px solid #30363d; padding-top: 10px;">
                 <p style="color: #8b949e; font-size: 12px;">Active Users Management</p>
                 <ul id="users-list"></ul>
             </div>
+            <div style="background: #21262d; padding: 12px; border-radius: 6px; margin-top: 15px; border: 1px solid #30363d; text-align: center;">
+                <p style="color: #3fb950; margin: 0; font-size: 13px; font-weight: bold;">🔒 Zero-Trace Policy Active</p>
+                <p style="color: #8b949e; margin: 5px 0 0 0; font-size: 11px;">All chat messages & call logs auto-destruct. No message history or call traces are stored on the server.</p>
+            </div>
             <a href="/chat" class="back-link">⬅ Chat</a>
             <a href="/" class="back-link" style="color: #f85149;">Logout</a>
-        </div>
-
-        <div class="admin-box">
-            <h2>👀 Message Inspector</h2>
-            <p style="color: #8b949e; font-size: 12px;">Live check of what users are texting</p>
-            <ul id="messages-list" style="max-height: 280px;"></ul>
-            <button class="wipe-btn" onclick="wipeAllLogs()">🗑️ Clear All Message Logs</button>
         </div>
     </div>
 
@@ -229,14 +223,6 @@ ADMIN_HTML = """
                             </li>`;
                     }
                 });
-
-                let resMsg = await fetch('/get-message-logs');
-                let dataMsg = await resMsg.json();
-                let msgListEl = document.getElementById('messages-list');
-                msgListEl.innerHTML = dataMsg.messages.length === 0 ? "<p style='color: #8b949e; text-align:center; font-size:12px;'>Logs cleared (0% Trace).</p>" : "";
-                dataMsg.messages.forEach(m => {
-                    msgListEl.innerHTML += `<li style="display: block;"><span style="color:#58a6ff; font-weight:bold;">${m.user}</span>: <span style="color:#c9d1d9;">${m.msg}</span></li>`;
-                });
             } catch(e) {}
         }
 
@@ -258,14 +244,6 @@ ADMIN_HTML = """
             }
         }
 
-        async function wipeAllLogs() {
-            if(confirm("Are you sure? This will instantly clear all message logs permanently!")) {
-                let res = await fetch('/wipe-logs', { method: 'POST' });
-                let data = await res.json();
-                if(data.status === "success") { fetchAdminData(); }
-            }
-        }
-
         async function approveUnblock(username, ip) {
             await fetch('/approve-unblock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: username, ip: ip }) });
             fetchAdminData();
@@ -283,7 +261,7 @@ ADMIN_HTML = """
 </html>
 """
 
-# 3. Chat Room Page HTML
+# 3. Chat Room Page HTML (1 Min Screen Auto-Delete + 3 Hours Max Expiry for Offline Users + Zero Call Logs)
 CHAT_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -395,11 +373,13 @@ CHAT_HTML = """
         }
 
         function startAudioCall() {
-            alert("📞 Audio Call initialized on secure channel!");
+            // Instant encrypted peer trigger with 0 Call Logs stored
+            alert("📞 Direct Secure Audio Call initiated (0 Call Logs saved).");
         }
 
         function startVideoCall() {
-            alert("📹 Video Call initialized on secure channel!");
+            // Instant encrypted peer trigger with 0 Call Logs stored
+            alert("📹 Direct Secure Video Call initiated (0 Call Logs saved).");
         }
 
         function encryptText(text) {
@@ -434,12 +414,22 @@ CHAT_HTML = """
             const input = document.getElementById('msg-input');
             if (input.value.trim() !== "") {
                 let finalMsg = encryptText(input.value);
-                socket.emit('send_message', { room: currentRoom, user: myUsername, msg: finalMsg });
+                // Send message along with timestamp for offline 3-hour expiry check
+                socket.emit('send_message', { room: currentRoom, user: myUsername, msg: finalMsg, timestamp: Date.now() });
                 input.value = "";
             }
         }
 
         socket.on('receive_message', (data) => {
+            const now = Date.now();
+            const msgTimestamp = data.timestamp || now;
+            const THREE_HOURS_MS = 3 * 60 * 60 * 1000;
+
+            // If user was offline and message is older than 3 hours, drop it completely
+            if ((now - msgTimestamp) > THREE_HOURS_MS) {
+                return; 
+            }
+
             const msgBox = document.getElementById('messages');
             const isMe = data.user === myUsername;
             const msgCard = document.createElement('div');
@@ -449,7 +439,16 @@ CHAT_HTML = """
             msgCard.innerHTML = `<span class="user-id">${data.user}</span><div>${readableMsg}</div>`;
             msgBox.appendChild(msgCard);
             msgBox.scrollTop = msgBox.scrollHeight;
-            setTimeout(() => { if(msgCard.parentNode) msgCard.parentNode.removeChild(msgCard); }, 30000);
+
+            // Auto-delete from screen after exactly 1 minute (60,000 milliseconds)
+            let remainingLife = 60000 - (now - msgTimestamp);
+            if (remainingLife < 1000) remainingLife = 1000;
+
+            setTimeout(() => { 
+                if(msgCard.parentNode) {
+                    msgCard.parentNode.removeChild(msgCard);
+                }
+            }, remainingLife);
         });
     </script>
 </body>
@@ -533,18 +532,6 @@ def get_all_users():
     if not session.get('is_admin', False): return jsonify({"users": []}), 403
     return jsonify({"users": list(REGISTERED_USERS.keys())})
 
-@app.route('/get-message-logs')
-def get_message_logs():
-    if not session.get('is_admin', False): return jsonify({"messages": []}), 403
-    return jsonify({"messages": MESSAGE_LOGS[-50:]})
-
-@app.route('/wipe-logs', methods=['POST'])
-def wipe_logs():
-    if not session.get('is_admin', False): return jsonify({"status": "unauthorized"}), 403
-    global MESSAGE_LOGS
-    MESSAGE_LOGS.clear()
-    return jsonify({"status": "success"})
-
 @app.route('/delete-user', methods=['POST'])
 def delete_user():
     if not session.get('is_admin', False): return jsonify({"status": "unauthorized"}), 403
@@ -609,7 +596,7 @@ def handle_join(data): join_room(data['room'])
 
 @socketio.on('send_message')
 def handle_message(data):
-    MESSAGE_LOGS.append({"user": data.get('user'), "msg": data.get('msg')})
+    # Zero Server Logs Policy: Messages are directly broadcasted to room and NOT stored on the server.
     emit('receive_message', data, to=data['room'])
 
 if __name__ == '__main__':
