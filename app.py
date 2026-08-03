@@ -198,7 +198,7 @@ ADMIN_HTML = """
             <h2>👀 Message Inspector</h2>
             <p style="color: #8b949e; font-size: 12px;">Live check of what users are texting</p>
             <ul id="messages-list" style="max-height: 280px;"></ul>
-            <button class="wipe-btn" onclick="wipeAllLogs()">🔥 Wipe All Logs (0% Trace)</button>
+            <button class="wipe-btn" onclick="wipeAllLogs()">🗑️ Clear All Message Logs</button>
         </div>
     </div>
 
@@ -233,7 +233,7 @@ ADMIN_HTML = """
                 let resMsg = await fetch('/get-message-logs');
                 let dataMsg = await resMsg.json();
                 let msgListEl = document.getElementById('messages-list');
-                msgListEl.innerHTML = dataMsg.messages.length === 0 ? "<p style='color: #8b949e; text-align:center; font-size:12px;'>Logs wiped (0% Trace).</p>" : "";
+                msgListEl.innerHTML = dataMsg.messages.length === 0 ? "<p style='color: #8b949e; text-align:center; font-size:12px;'>Logs cleared (0% Trace).</p>" : "";
                 dataMsg.messages.forEach(m => {
                     msgListEl.innerHTML += `<li style="display: block;"><span style="color:#58a6ff; font-weight:bold;">${m.user}</span>: <span style="color:#c9d1d9;">${m.msg}</span></li>`;
                 });
@@ -259,7 +259,7 @@ ADMIN_HTML = """
         }
 
         async function wipeAllLogs() {
-            if(confirm("Are you sure? This will instantly delete all message logs permanently!")) {
+            if(confirm("Are you sure? This will instantly clear all message logs permanently!")) {
                 let res = await fetch('/wipe-logs', { method: 'POST' });
                 let data = await res.json();
                 if(data.status === "success") { fetchAdminData(); }
@@ -315,11 +315,9 @@ CHAT_HTML = """
         .input-box { display: flex; padding: 12px; background: #21262d; gap: 8px; border-top: 1px solid #30363d; }
         input { width: 100%; padding: 10px; background: #0d1117; border: 1px solid #30363d; color: white; border-radius: 6px; outline: none; }
         button.btn-send { padding: 10px 18px; background: #238636; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
-        #connection-banner { display: none; background: #da3633; color: white; text-align: center; font-size: 12px; padding: 4px; font-weight: bold; }
     </style>
 </head>
 <body>
-    <div id="connection-banner">⚠️ Connection Lost / Background Inactive. Reconnecting...</div>
     <div id="room-modal">
         <div class="modal-box">
             <h2>🔑 Access Reserved Room</h2>
@@ -355,14 +353,24 @@ CHAT_HTML = """
         let myUsername = "User";
         let isE2EEActive = false;
 
-        // Background / Disconnection Detector
-        socket.on('disconnect', () => {
-            document.getElementById('connection-banner').style.display = 'block';
+        // --- INSTANT KILL-SWITCH (Power Button / Background / Screen Off Logout) ---
+        async function triggerInstantLogout() {
+            try {
+                await fetch('/logout-session', { method: 'POST' });
+            } catch(e) {}
+            window.location.href = "/";
+        }
+
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden) {
+                triggerInstantLogout();
+            }
         });
 
-        socket.on('connect', () => {
-            document.getElementById('connection-banner').style.display = 'none';
+        window.addEventListener("blur", () => {
+            triggerInstantLogout();
         });
+        // --------------------------------------------------------------------------
 
         async function initChat() {
             try {
@@ -450,6 +458,11 @@ CHAT_HTML = """
 
 @app.route('/')
 def home(): return LOGIN_HTML
+
+@app.route('/logout-session', methods=['POST'])
+def logout_session():
+    session.clear()
+    return jsonify({"status": "logged_out"})
 
 @app.route('/check-status')
 def check_status():
