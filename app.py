@@ -8,9 +8,7 @@ app = Flask(__name__)
 app.secret_key = "ghostsecret12345"
 socketio = SocketIO(app, async_mode='eventlet')
 
-# === PASSWORDS SETUP ===
 APP_PASSWORD = "1234"
-CHAT_PASSWORD = "1234"  # <-- Isko 'abcd' se badal kar '1234' kar diya hai
 
 @app.route("/", methods=["GET", "POST"])
 def login():
@@ -29,16 +27,12 @@ def chat():
         return redirect(url_for('login'))
     return render_template("chat.html")
 
-@socketio.on('verify_password')
-def verify(data):
-    if data['password'] == CHAT_PASSWORD:
-        emit('password_status', {'status': 'ok'})
-    else:
-        emit('password_status', {'status': 'wrong'})
-
 @socketio.on('send_message')
 def handle_msg(data):
-    emit('receive_message', {'msg': data['msg']}, broadcast=True)
+    # Sender User ID aur Message dono ko sabhi connected clients tak bhejna
+    user_id = data.get('user', 'Anonymous')
+    message = data.get('msg', '')
+    emit('receive_message', {'user': user_id, 'msg': message}, broadcast=True)
 
 if __name__ == "__main__":
     socketio.run(app, host="0.0.0.0", port=5000)
