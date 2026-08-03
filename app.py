@@ -1,49 +1,68 @@
-from flask import Flask, render_template, request, redirect, url_for, session, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session
 from flask_socketio import SocketIO, emit, join_room
 import os
 
 app = Flask(__name__)
 app.secret_key = "ghost_super_secret_key_998877"
 
-# Aapka Master Password
 APP_PASSWORD = "guru&guru16230"
 
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, async_mode='eventlet', cors_allowed_origins="*")
 
 FAKE_404_HTML = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>404 Page Not Available</title>
     <style>
-        body { background: #fff; color: #000; font-family: Arial; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        h1 { font-size: 3rem; margin-bottom: 10px; }
+        body {
+            background-color: #ffffff;
+            color: #000000;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            text-align: center;
+        }
+        h1 { font-size: 3rem; margin-bottom: 10px; color: #333; }
+        p { font-size: 1.2rem; color: #666; margin-bottom: 20px; }
+        .error-code { font-size: 0.9rem; color: #999; }
+        a.secret-btn {
+            margin-top: 25px;
+            color: #666;
+            text-decoration: underline;
+            font-size: 0.9rem;
+        }
     </style>
 </head>
 <body>
     <h1>404</h1>
     <p><b>Page Not Available</b></p>
+    <div class="error-code">The requested URL was not found on this server or the session has expired.</div>
+    <a href="/" class="secret-btn">Go to Login</a>
 </body>
 </html>
 """
 
-@app.route('/', methods=['GET'])
-def home():
+@app.route('/', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        user_password = request.form.get('password')
+        if user_password == APP_PASSWORD:
+            session['authenticated'] = True
+            return redirect(url_for('chat'))
+        else:
+            return FAKE_404_HTML, 404
+    
     if session.get('authenticated'):
         return redirect(url_for('chat'))
-    return render_template('index.html')
-
-@app.route('/verify-master', methods=['POST'])
-def verify_master():
-    data = request.json
-    entered_password = data.get('password')
-    
-    if entered_password == APP_PASSWORD:
-        session['authenticated'] = True
-        return jsonify({"status": "success"})
-    else:
-        return jsonify({"status": "error", "message": "Invalid Password"}), 401
+        
+    return render_template('login.html')
 
 @app.route('/chat')
 def chat():
@@ -54,7 +73,7 @@ def chat():
 @app.route('/logout')
 def logout():
     session.clear()
-    return redirect(url_for('home'))
+    return FAKE_404_HTML, 404
 
 @socketio.on('join_room')
 def handle_join_room(data):
