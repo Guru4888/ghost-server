@@ -44,7 +44,7 @@ def add_security_headers(response):
     response.headers["Expires"] = "0"
     return response
 
-# Calculator Disguise + Login Portal combined HTML
+# Calculator Disguise + Login Portal combined HTML (Fixed Touch/Click event listeners)
 CALC_LOGIN_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -53,21 +53,21 @@ CALC_LOGIN_HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Simple Calculator</title>
     <style>
-        body { background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; user-select: none; }
+        body { background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
         
         /* Calculator UI */
-        #calc-container { background: #161b22; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 300px; border: 1px solid #30363d; display: block; }
+        #calc-container { background: #161b22; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 300px; border: 1px solid #30363d; display: block; z-index: 10; position: relative; }
         #calc-screen { width: 100%; height: 50px; background: #010409; border: 1px solid #30363d; color: white; font-size: 1.5rem; text-align: right; padding: 10px; box-sizing: border-box; border-radius: 6px; margin-bottom: 15px; overflow-x: auto; }
         .calc-keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-        .calc-btn { padding: 15px; background: #21262d; color: white; border: 1px solid #30363d; border-radius: 6px; font-size: 1.1rem; font-weight: bold; cursor: pointer; }
-        .calc-btn:hover { background: #30363d; }
+        .calc-btn { padding: 15px; background: #21262d; color: white; border: 1px solid #30363d; border-radius: 6px; font-size: 1.1rem; font-weight: bold; cursor: pointer; touch-action: manipulation; }
+        .calc-btn:active { background: #484f58; }
         .calc-btn.op { background: #1f6feb; }
-        .calc-btn.op:hover { background: #388bfd; }
+        .calc-btn.op:active { background: #388bfd; }
         .calc-btn.equal { background: #238636; grid-column: span 2; }
-        .calc-btn.equal:hover { background: #2ea043; }
+        .calc-btn.equal:active { background: #2ea043; }
 
         /* Secret Portal UI (Hidden by default) */
-        #portal-container { display: none; background: #161b22; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 330px; text-align: center; border: 1px solid #30363d; }
+        #portal-container { display: none; background: #161b22; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 330px; text-align: center; border: 1px solid #30363d; z-index: 10; position: relative; }
         #portal-container input, #portal-container select { width: 100%; padding: 10px; margin: 6px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
         .secure-pass { -webkit-text-security: disc; text-security: disc; }
         #portal-container button.portal-submit { width: 100%; padding: 10px; background: #238636; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 8px; }
@@ -86,25 +86,25 @@ CALC_LOGIN_HTML = """
     <div id="calc-container">
         <div id="calc-screen">0</div>
         <div class="calc-keys">
-            <button class="calc-btn" onclick="clearCalc()">C</button>
-            <button class="calc-btn" onclick="pressCalc('(')">(</button>
-            <button class="calc-btn" onclick="pressCalc(')')">)</button>
-            <button class="calc-btn op" onclick="pressCalc('/')">/</button>
-            <button class="calc-btn" onclick="pressCalc('7')">7</button>
-            <button class="calc-btn" onclick="pressCalc('8')">8</button>
-            <button class="calc-btn" onclick="pressCalc('9')">9</button>
-            <button class="calc-btn op" onclick="pressCalc('*')">*</button>
-            <button class="calc-btn" onclick="pressCalc('4')">4</button>
-            <button class="calc-btn" onclick="pressCalc('5')">5</button>
-            <button class="calc-btn" onclick="pressCalc('6')">6</button>
-            <button class="calc-btn op" onclick="pressCalc('-')">-</button>
-            <button class="calc-btn" onclick="pressCalc('1')">1</button>
-            <button class="calc-btn" onclick="pressCalc('2')">2</button>
-            <button class="calc-btn" onclick="pressCalc('3')">3</button>
-            <button class="calc-btn op" onclick="pressCalc('+')">+</button>
-            <button class="calc-btn" onclick="pressCalc('0')">0</button>
-            <button class="calc-btn" onclick="pressCalc('.')">.</button>
-            <button class="calc-btn equal" onclick="calculateResult()">=</button>
+            <button class="calc-btn" data-val="C">C</button>
+            <button class="calc-btn" data-val="(">(</button>
+            <button class="calc-btn" data-val=")">)</button>
+            <button class="calc-btn op" data-val="/">/</button>
+            <button class="calc-btn" data-val="7">7</button>
+            <button class="calc-btn" data-val="8">8</button>
+            <button class="calc-btn" data-val="9">9</button>
+            <button class="calc-btn op" data-val="*">*</button>
+            <button class="calc-btn" data-val="4">4</button>
+            <button class="calc-btn" data-val="5">5</button>
+            <button class="calc-btn" data-val="6">6</button>
+            <button class="calc-btn op" data-val="-">-</button>
+            <button class="calc-btn" data-val="1">1</button>
+            <button class="calc-btn" data-val="2">2</button>
+            <button class="calc-btn" data-val="3">3</button>
+            <button class="calc-btn op" data-val="+">+</button>
+            <button class="calc-btn" data-val="0">0</button>
+            <button class="calc-btn" data-val=".">.</button>
+            <button class="calc-btn equal" data-val="=">=</button>
         </div>
     </div>
 
@@ -150,30 +150,40 @@ CALC_LOGIN_HTML = """
     <script>
         let calcExpr = "";
 
-        function pressCalc(val) {
-            calcExpr += val;
-            document.getElementById("calc-screen").innerText = calcExpr;
-        }
+        document.querySelectorAll('.calc-btn').forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                const val = this.getAttribute('data-val');
+                handleCalcInput(val);
+            });
+            button.addEventListener('touchend', function(e) {
+                e.preventDefault();
+                const val = this.getAttribute('data-val');
+                handleCalcInput(val);
+            });
+        });
 
-        function clearCalc() {
-            calcExpr = "";
-            document.getElementById("calc-screen").innerText = "0";
-        }
-
-        function calculateResult() {
-            if (calcExpr === "786=") || calcExpr === "786" || calcExpr.trim() === "786") {
-                // Open Secret Login Portal
-                document.getElementById("calc-container").style.display = "none";
-                document.getElementById("portal-container").style.display = "block";
-                return;
-            }
-            try {
-                let res = eval(calcExpr);
-                document.getElementById("calc-screen").innerText = res;
-                calcExpr = res.toString();
-            } catch (e) {
-                document.getElementById("calc-screen").innerText = "Error";
+        function handleCalcInput(val) {
+            if (val === 'C') {
                 calcExpr = "";
+                document.getElementById("calc-screen").innerText = "0";
+            } else if (val === '=') {
+                if (calcExpr === "786=" || calcExpr === "786" || calcExpr.trim() === "786") {
+                    document.getElementById("calc-container").style.display = "none";
+                    document.getElementById("portal-container").style.display = "block";
+                    return;
+                }
+                try {
+                    let res = eval(calcExpr);
+                    document.getElementById("calc-screen").innerText = res;
+                    calcExpr = res.toString();
+                } catch (e) {
+                    document.getElementById("calc-screen").innerText = "Error";
+                    calcExpr = "";
+                }
+            } else {
+                calcExpr += val;
+                document.getElementById("calc-screen").innerText = calcExpr;
             }
         }
 
