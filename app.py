@@ -44,20 +44,34 @@ def add_security_headers(response):
     response.headers["Expires"] = "0"
     return response
 
-LOGIN_HTML = """
+# Calculator Disguise + Login Portal combined HTML
+CALC_LOGIN_HTML = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>System Access Portal</title>
+    <title>Simple Calculator</title>
     <style>
         body { background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; user-select: none; }
-        .portal-box { background: #161b22; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 330px; text-align: center; border: 1px solid #30363d; }
-        .portal-box input, .portal-box select { width: 100%; padding: 10px; margin: 6px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
+        
+        /* Calculator UI */
+        #calc-container { background: #161b22; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 300px; border: 1px solid #30363d; display: block; }
+        #calc-screen { width: 100%; height: 50px; background: #010409; border: 1px solid #30363d; color: white; font-size: 1.5rem; text-align: right; padding: 10px; box-sizing: border-box; border-radius: 6px; margin-bottom: 15px; overflow-x: auto; }
+        .calc-keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+        .calc-btn { padding: 15px; background: #21262d; color: white; border: 1px solid #30363d; border-radius: 6px; font-size: 1.1rem; font-weight: bold; cursor: pointer; }
+        .calc-btn:hover { background: #30363d; }
+        .calc-btn.op { background: #1f6feb; }
+        .calc-btn.op:hover { background: #388bfd; }
+        .calc-btn.equal { background: #238636; grid-column: span 2; }
+        .calc-btn.equal:hover { background: #2ea043; }
+
+        /* Secret Portal UI (Hidden by default) */
+        #portal-container { display: none; background: #161b22; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 330px; text-align: center; border: 1px solid #30363d; }
+        #portal-container input, #portal-container select { width: 100%; padding: 10px; margin: 6px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
         .secure-pass { -webkit-text-security: disc; text-security: disc; }
-        .portal-box button { width: 100%; padding: 10px; background: #238636; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 8px; }
-        .portal-box button:hover { background: #2ea043; }
+        #portal-container button.portal-submit { width: 100%; padding: 10px; background: #238636; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 8px; }
+        #portal-container button.portal-submit:hover { background: #2ea043; }
         .tab-btn { background: #21262d; color: #8b949e; border: 1px solid #30363d; padding: 8px 6px; cursor: pointer; border-radius: 6px; font-weight: bold; width: 31%; font-size: 11px; }
         .tab-btn.active { background: #1f6feb; color: white; border-color: #1f6feb; }
         .tabs { display: flex; justify-content: space-between; margin-bottom: 15px; }
@@ -68,7 +82,34 @@ LOGIN_HTML = """
     </style>
 </head>
 <body>
-    <div class="portal-box" autocomplete="off">
+    <!-- Calculator Wrapper -->
+    <div id="calc-container">
+        <div id="calc-screen">0</div>
+        <div class="calc-keys">
+            <button class="calc-btn" onclick="clearCalc()">C</button>
+            <button class="calc-btn" onclick="pressCalc('(')">(</button>
+            <button class="calc-btn" onclick="pressCalc(')')">)</button>
+            <button class="calc-btn op" onclick="pressCalc('/')">/</button>
+            <button class="calc-btn" onclick="pressCalc('7')">7</button>
+            <button class="calc-btn" onclick="pressCalc('8')">8</button>
+            <button class="calc-btn" onclick="pressCalc('9')">9</button>
+            <button class="calc-btn op" onclick="pressCalc('*')">*</button>
+            <button class="calc-btn" onclick="pressCalc('4')">4</button>
+            <button class="calc-btn" onclick="pressCalc('5')">5</button>
+            <button class="calc-btn" onclick="pressCalc('6')">6</button>
+            <button class="calc-btn op" onclick="pressCalc('-')">-</button>
+            <button class="calc-btn" onclick="pressCalc('1')">1</button>
+            <button class="calc-btn" onclick="pressCalc('2')">2</button>
+            <button class="calc-btn" onclick="pressCalc('3')">3</button>
+            <button class="calc-btn op" onclick="pressCalc('+')">+</button>
+            <button class="calc-btn" onclick="pressCalc('0')">0</button>
+            <button class="calc-btn" onclick="pressCalc('.')">.</button>
+            <button class="calc-btn equal" onclick="calculateResult()">=</button>
+        </div>
+    </div>
+
+    <!-- Secret Portal Box -->
+    <div id="portal-container">
         <h2>🔒 Multi-User Portal</h2>
         <div class="tabs">
             <button class="tab-btn active" onclick="switchTab('login', event)">Login</button>
@@ -79,7 +120,7 @@ LOGIN_HTML = """
         <div id="login-form" class="form-section active">
             <input type="text" id="login-user" placeholder="Username" autocomplete="off">
             <input type="text" id="login-pass" placeholder="Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
-            <button onclick="loginUser()">Login to Portal</button>
+            <button class="portal-submit" onclick="loginUser()">Login to Portal</button>
             <div id="loginError" class="error-msg"></div>
         </div>
 
@@ -92,7 +133,7 @@ LOGIN_HTML = """
                 <option value="What is your favorite food?">What is your favorite food?</option>
             </select>
             <input type="text" id="reg-ans" placeholder="Security Answer (for reset)" autocomplete="off">
-            <button onclick="registerUser()">Create Account</button>
+            <button class="portal-submit" onclick="registerUser()">Create Account</button>
             <div id="regMsg" class="error-msg"></div>
         </div>
 
@@ -101,12 +142,41 @@ LOGIN_HTML = """
             <div id="q-display" style="color: #58a6ff; font-size: 11px; margin: 4px 0; text-align: left;"></div>
             <input type="text" id="forgot-ans" placeholder="Security Answer" autocomplete="off">
             <input type="text" id="forgot-new-pass" placeholder="New Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
-            <button onclick="resetPassword()" style="background: #d29922; color: #0d1117;">Verify & Reset</button>
+            <button class="portal-submit" onclick="resetPassword()" style="background: #d29922; color: #0d1117;">Verify & Reset</button>
             <div id="forgotMsg" class="error-msg"></div>
         </div>
     </div>
 
     <script>
+        let calcExpr = "";
+
+        function pressCalc(val) {
+            calcExpr += val;
+            document.getElementById("calc-screen").innerText = calcExpr;
+        }
+
+        function clearCalc() {
+            calcExpr = "";
+            document.getElementById("calc-screen").innerText = "0";
+        }
+
+        function calculateResult() {
+            if (calcExpr === "786=") || calcExpr === "786" || calcExpr.trim() === "786") {
+                // Open Secret Login Portal
+                document.getElementById("calc-container").style.display = "none";
+                document.getElementById("portal-container").style.display = "block";
+                return;
+            }
+            try {
+                let res = eval(calcExpr);
+                document.getElementById("calc-screen").innerText = res;
+                calcExpr = res.toString();
+            } catch (e) {
+                document.getElementById("calc-screen").innerText = "Error";
+                calcExpr = "";
+            }
+        }
+
         function switchTab(tab, event) {
             document.querySelectorAll('.form-section').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -446,7 +516,7 @@ CHAT_HTML = """
         #video-container { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 1000; justify-content: center; align-items: center; flex-direction: column; }
         .video-box { position: relative; width: 85%; max-width: 420px; background: #161b22; border-radius: 12px; padding: 15px; border: 1px solid #30363d; display: flex; flex-direction: column; align-items: center; }
         video { width: 100%; max-height: 300px; border-radius: 8px; background: black; margin-bottom: 12px; object-fit: cover; }
-        #localVideo { display: none; } /* Audio call mein khudka video element hide rahega */
+        #localVideo { display: none; }
         .call-control-bar { display: flex; gap: 10px; width: 100%; justify-content: center; margin-top: 5px; }
     </style>
 </head>
@@ -786,7 +856,6 @@ CHAT_HTML = """
             }
         });
 
-        // WebRTC Call System (Fixed for Audio-only vs Video separation & Earpiece routing)
         let localStream, peerConnection;
         const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
@@ -802,8 +871,7 @@ CHAT_HTML = """
                     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 } else {
                     statusTitle.innerText = "📞 Audio Call Connected";
-                    localVidEl.style.display = 'none'; // Audio call mein khudka video element hide
-                    // Sirf audio stream fetch karega, camera bilkul access nahi hoga
+                    localVidEl.style.display = 'none';
                     localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
                 }
 
@@ -815,7 +883,6 @@ CHAT_HTML = """
                 peerConnection.ontrack = e => {
                     const remoteVidEl = document.getElementById('remoteVideo');
                     remoteVidEl.srcObject = e.streams[0];
-                    // Speaker fix: Audio call mein loudspeaker enforce hone se rokne ke liye normal audio output stream set ki gayi hai
                     remoteVidEl.muted = false;
                 };
 
@@ -901,7 +968,7 @@ ONLINE_USERS = set()
 @app.route('/')
 def home():
     session.clear()
-    return LOGIN_HTML
+    return CALC_LOGIN_HTML
 
 @app.route('/logout')
 def logout():
