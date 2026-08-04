@@ -1,31 +1,35 @@
 from flask import Flask, request, redirect, url_for, session, jsonify
 from flask_socketio import SocketIO, emit, join_room
 import os
-import json
+import sqlite3
 
 app = Flask(__name__)
 app.secret_key = "ghost_super_secret_key_multi_user_998877"
 
-USERS_FILE = "users.json"
+DB_FILE = "database.db"
 
-def load_users():
-    if os.path.exists(USERS_FILE):
-        try:
-            with open(USERS_FILE, "r") as f:
-                data = json.load(f)
-                return data.get("registered", {"admin": "guru&guru16230"}), data.get("blocked", [])
-        except:
-            pass
-    return {"admin": "guru&guru16230"}, []
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            username TEXT PRIMARY KEY,
+            password TEXT NOT NULL
+        )
+    ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS blocked (
+            username TEXT PRIMARY KEY
+        )
+    ''')
+    # Default admin check
+    cursor.execute("SELECT * FROM users WHERE username = 'admin'")
+    if not cursor.fetchone():
+        cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", ("admin", "guru&guru16230"))
+    conn.commit()
+    conn.close()
 
-def save_users(registered, blocked):
-    try:
-        with open(USERS_FILE, "w") as f:
-            json.dump({"registered": registered, "blocked": blocked}, f)
-    except:
-        pass
-
-REGISTERED_USERS, BLOCKED_USERS = load_users()
+init_db()
 
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', ping_timeout=60, ping_interval=25)
 
@@ -578,22 +582,39 @@ def logout():
 
 @app.route('/register', methods=['POST'])
 def register():
-    global REGISTERED_USERS, BLOCKED_USERS
     data = request.json
     u, p = data.get('username', '').strip(), data.get('password', '').strip()
     if not u or not p: return jsonify({"status": "error"}), 400
-    if u in REGISTERED_USERS: return jsonify({"status": "error", "message": "Username already exists!"}), 400
-    REGISTERED_USERS[u] = p
-    save_users(REGISTERED_USERS, BLOCKED_USERS)
+    
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE username = ?", (u,))
+    if cursor.fetchone():
+        conn.close()
+        return jsonify({"status": "error", "message": "Username already exists!"}), 400
+    
+    cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (u, p))
+    conn.commit()
+    conn.close()
     return jsonify({"status": "success"})
 
 @app.route('/login', methods=['POST'])
 def login():
-    global REGISTERED_USERS, BLOCKED_USERS
     data = request.json
     u, p = data.get('username', '').strip(), data.get('password', '').strip()
-    if u in BLOCKED_USERS: return jsonify({"status": "error", "message": "User is blocked!"}), 403
-    if u in REGISTERED_USERS and REGISTERED_USERS[u] == p:
+    
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM blocked WHERE username = ?", (u,))
+    if cursor.fetchone():
+        conn.close()
+        return jsonify({"status": "error", "message": "User is blocked!"}), 403
+        
+    cursor.execute("SELECT password FROM users WHERE username = ?", (u,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row and row[0] == p:
         session['authenticated'] = True
         session['user'] = u
         session['is_admin'] = (u == "admin")
@@ -602,14 +623,23 @@ def login():
 
 @app.route('/check-session')
 def check_session():
-    global REGISTERED_USERS, BLOCKED_USERS
     user = session.get('user')
-    is_blocked = user in BLOCKED_USERS
-    is_deleted = user and user not in REGISTERED_USERS
+    if not user:
+        return jsonify({"authenticated": False})
+        
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM blocked WHERE username = ?", (user,))
+    is_blocked = cursor.fetchone() is not None
+    
+    cursor.execute("SELECT * FROM users WHERE username = ?", (user,))
+    is_deleted = cursor.fetchone() is None
+    conn.close()
+    
     return jsonify({
         "authenticated": session.get('authenticated', False) and not is_blocked and not is_deleted,
         "is_admin": session.get('is_admin', False),
-        "username": user if user else 'Guest',
+        "username": user,
         "is_blocked": is_blocked,
         "is_deleted": is_deleted
     })
@@ -622,44 +652,66 @@ def admin_panel():
 @app.route('/get-admin-data')
 def get_admin_data():
     if not session.get('is_admin', False): return jsonify({}), 403
-    return jsonify({"users": list(REGISTERED_USERS.keys()), "blocked": BLOCKED_USERS})
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT username FROM users")
+    users = [row[0] for row in cursor.fetchall()]
+    cursor.execute("SELECT username FROM blocked")
+    blocked = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    return jsonify({"users": users, "blocked": blocked})
 
 @app.route('/block-user', methods=['POST'])
 def block_user():
-    global REGISTERED_USERS, BLOCKED_USERS
     if not session.get('is_admin', False): return jsonify({}), 403
     u = request.json.get('username')
-    if u in REGISTERED_USERS and u != "admin" and u not in BLOCKED_USERS:
-        BLOCKED_USERS.append(u)
-        save_users(REGISTERED_USERS, BLOCKED_USERS)
+    if u and u != "admin":
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR IGNORE INTO blocked (username) VALUES (?)", (u,))
+        conn.commit()
+        conn.close()
     return jsonify({"status": "success"})
 
 @app.route('/unblock-user', methods=['POST'])
 def unblock_user():
-    global REGISTERED_USERS, BLOCKED_USERS
     if not session.get('is_admin', False): return jsonify({}), 403
     u = request.json.get('username')
-    if u in BLOCKED_USERS: 
-        BLOCKED_USERS.remove(u)
-        save_users(REGISTERED_USERS, BLOCKED_USERS)
+    if u:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM blocked WHERE username = ?", (u,))
+        conn.commit()
+        conn.close()
     return jsonify({"status": "success"})
 
 @app.route('/delete-user', methods=['POST'])
 def delete_user():
-    global REGISTERED_USERS, BLOCKED_USERS
     if not session.get('is_admin', False): return jsonify({}), 403
     u = request.json.get('username')
-    if u in REGISTERED_USERS and u != "admin":
-        del REGISTERED_USERS[u]
-        if u in BLOCKED_USERS: BLOCKED_USERS.remove(u)
-        save_users(REGISTERED_USERS, BLOCKED_USERS)
+    if u and u != "admin":
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM users WHERE username = ?", (u,))
+        cursor.execute("DELETE FROM blocked WHERE username = ?", (u,))
+        conn.commit()
+        conn.close()
     return jsonify({"status": "success"})
 
 @app.route('/chat')
 def chat():
-    global REGISTERED_USERS, BLOCKED_USERS
     user = session.get('user')
-    if not session.get('authenticated') or user in BLOCKED_USERS or user not in REGISTERED_USERS: 
+    if not user: return redirect(url_for('home'))
+    
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM blocked WHERE username = ?", (user,))
+    is_blocked = cursor.fetchone() is not None
+    cursor.execute("SELECT * FROM users WHERE username = ?", (user,))
+    is_deleted = cursor.fetchone() is None
+    conn.close()
+    
+    if not session.get('authenticated') or is_blocked or is_deleted: 
         return redirect(url_for('home'))
     return CHAT_HTML
 
