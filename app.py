@@ -383,11 +383,6 @@ CHAT_HTML = """
         .lobby-box button { width: 100%; padding: 10px; background: #1f6feb; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 8px; }
         .lobby-box button:hover { background: #388bfd; }
 
-        .users-panel { margin-top: 15px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 10px; text-align: left; max-height: 140px; overflow-y: auto; }
-        .user-status-item { font-size: 11px; margin-bottom: 4px; display: flex; justify-content: space-between; }
-        .online-dot { color: #3fb950; font-weight: bold; }
-        .offline-txt { color: #8b949e; }
-
         /* Chat Screen */
         #chat-screen { display: none; width: 95%; max-width: 500px; height: 85vh; background: #161b22; border-radius: 12px; flex-direction: column; border: 1px solid #30363d; overflow: hidden; }
         .top-bar { background: #21262d; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; }
@@ -421,7 +416,7 @@ CHAT_HTML = """
 <body>
     <div id="security-warning">⚠️ Screen Recording / Capture Detected!<br>Access Restricted for Security.</div>
 
-    <!-- Room Lobby Dashboard -->
+    <!-- Room Lobby Section -->
     <div id="room-lobby">
         <div class="lobby-box">
             <h3>🌐 Room Gateway</h3>
@@ -432,12 +427,7 @@ CHAT_HTML = """
             <button id="gate-btn" onclick="joinProtectedRoom()">Join / Create Room</button>
             <div id="gate-error" style="color: #f85149; font-size: 12px; margin-top: 6px;"></div>
 
-            <div style="margin-top: 15px; font-size: 12px; color: #58a6ff; font-weight: bold; text-align: left;">Portal Users Status:</div>
-            <div id="all-users-status" class="users-panel">
-                <div style="color: #8b949e; font-size: 11px; text-align: center;">Loading users...</div>
-            </div>
-
-            <button onclick="instantLogout()" style="background: #da3633; margin-top: 15px;">🚪 Logout Portal</button>
+            <button onclick="instantLogout()" style="background: #da3633; margin-top: 20px;">🚪 Logout Portal</button>
         </div>
     </div>
 
@@ -528,24 +518,10 @@ CHAT_HTML = """
                     if(data.is_blocked || data.is_deleted) { instantLogout(); return; }
                     myUsername = data.username;
                     if(data.is_admin) { document.getElementById('admin-panel-btn').style.display = 'inline-block'; }
-                    socket.emit('get_lobby_data');
                 } else { window.location.href = "/"; }
             } catch(e) { window.location.href = "/"; }
         }
         initChat();
-
-        socket.on('update_lobby_info', (data) => {
-            const usersPanel = document.getElementById('all-users-status');
-            usersPanel.innerHTML = "";
-            data.users_status.forEach(u => {
-                let statusHtml = u.online ? `<span class="online-dot">● Online</span>` : `<span class="offline-txt">Last seen: ${u.last_seen}</span>`;
-                usersPanel.innerHTML += `
-                    <div class="user-status-item">
-                        <span>👤 ${u.username}</span>
-                        <span>${statusHtml}</span>
-                    </div>`;
-            });
-        });
 
         function joinProtectedRoom() {
             const rName = document.getElementById("room-name-input").value.trim();
@@ -592,7 +568,6 @@ CHAT_HTML = """
             document.getElementById('chat-screen').style.display = 'none';
             document.getElementById('room-lobby').style.display = 'flex';
             document.getElementById('messages').innerHTML = "";
-            socket.emit('get_lobby_data');
         }
 
         socket.on('room_users_update', (data) => {
@@ -779,7 +754,6 @@ def logout():
         conn.commit()
         conn.close()
     session.clear()
-    broadcast_lobby()
     return redirect(url_for('home'))
 
 @app.route('/register', methods=['POST'])
@@ -860,7 +834,6 @@ def login():
         session['user'] = u
         session['is_admin'] = (u == "admin")
         ONLINE_USERS.add(u)
-        broadcast_lobby()
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Invalid username or password!"}), 401
 
@@ -918,7 +891,6 @@ def block_user():
         cursor.execute("INSERT OR IGNORE INTO blocked (username) VALUES (?)", (u,))
         conn.commit()
         conn.close()
-        broadcast_lobby()
     return jsonify({"status": "success"})
 
 @app.route('/unblock-user', methods=['POST'])
@@ -945,7 +917,6 @@ def delete_user():
         cursor.execute("DELETE FROM blocked WHERE username = ?", (u,))
         conn.commit()
         conn.close()
-        broadcast_lobby()
     return jsonify({"status": "success"})
 
 @app.route('/chat')
@@ -964,26 +935,6 @@ def chat():
     if not session.get('authenticated') or is_blocked or is_deleted: 
         return redirect(url_for('home'))
     return CHAT_HTML
-
-def broadcast_lobby():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT username, last_seen FROM users")
-    rows = cursor.fetchall()
-    conn.close()
-    
-    users_status = []
-    for r in rows:
-        uname = r[0]
-        last_s = r[1]
-        is_on = uname in ONLINE_USERS
-        users_status.append({"username": uname, "online": is_on, "last_seen": last_s})
-        
-    socketio.emit('update_lobby_info', {"users_status": users_status})
-
-@socketio.on('get_lobby_data')
-def handle_get_lobby():
-    broadcast_lobby()
 
 @socketio.on('verify_and_join')
 def handle_room_verification(data):
@@ -1011,7 +962,6 @@ def handle_room_verification(data):
             "active_users": len(ROOM_USERS[room]), 
             "users": ROOM_USERS[room]
         }, to=room)
-        broadcast_lobby()
     else:
         emit('room_join_response', {"status": "error", "message": "Incorrect room password!"})
 
@@ -1027,7 +977,6 @@ def handle_leave_room(data):
             "active_users": len(ROOM_USERS[room]), 
             "users": ROOM_USERS[room]
         }, to=room)
-        broadcast_lobby()
 
 @socketio.on('admin_join_spy')
 def handle_admin_join_spy(data):
