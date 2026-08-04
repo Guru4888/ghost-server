@@ -268,7 +268,6 @@ CHAT_HTML = """
         body { background-color: #0d1117; color: #ffffff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; user-select: none; }
         #security-warning { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 9999; justify-content: center; align-items: center; color: #f85149; font-size: 1.5rem; font-weight: bold; text-align: center; padding: 20px; }
         
-        /* Room Password Gate Overlay */
         #room-gate { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0d1117; z-index: 999; display: flex; justify-content: center; align-items: center; }
         .gate-box { background: #161b22; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 320px; text-align: center; border: 1px solid #30363d; }
         .gate-box input { width: 100%; padding: 12px; margin: 8px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
@@ -308,14 +307,13 @@ CHAT_HTML = """
 <body>
     <div id="security-warning">⚠️ Screen Recording / Capture Detected!<br>Access Restricted for Security.</div>
 
-    <!-- Room Gate Popup (Password Protection) -->
     <div id="room-gate">
         <div class="gate-box">
             <h3>🔐 Enter Secret Room</h3>
             <p style="color: #8b949e; font-size: 11px; margin-bottom: 10px;">Provide room name & password to enter.</p>
             <input type="text" id="room-name-input" placeholder="Room Name" autocomplete="off">
             <input type="text" id="room-pass-input" placeholder="Room Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
-            <button onclick="joinProtectedRoom()">Enter Room</button>
+            <button id="gate-btn" onclick="joinProtectedRoom()">Enter Room</button>
             <div id="gate-error" style="color: #f85149; font-size: 12px; margin-top: 8px;"></div>
         </div>
     </div>
@@ -384,7 +382,11 @@ CHAT_HTML = """
             document.getElementById('security-warning').style.display = 'flex';
         }
 
-        const socket = io({ reconnection: false });
+        const socket = io({ 
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionAttempts: 5
+        });
 
         let currentRoom = "";
         let roomPassword = "";
@@ -412,20 +414,28 @@ CHAT_HTML = """
             const rName = document.getElementById("room-name-input").value.trim();
             const rPass = document.getElementById("room-pass-input").value.trim();
             const errEl = document.getElementById("gate-error");
+            const btnEl = document.getElementById("gate-btn");
 
             if(!rName || !rPass) {
                 errEl.innerText = "Please enter both room name and password!";
                 return;
             }
 
+            errEl.innerText = "";
+            btnEl.innerText = "Connecting...";
+            btnEl.disabled = true;
+
             currentRoom = rName;
             roomPassword = rPass;
 
-            // Verify room password via backend socket or direct join request
             socket.emit('verify_and_join', { room: currentRoom, password: roomPassword, user: myUsername });
         }
 
         socket.on('room_join_response', (data) => {
+            const btnEl = document.getElementById("gate-btn");
+            btnEl.innerText = "Enter Room";
+            btnEl.disabled = false;
+
             if(data.status === "success") {
                 document.getElementById('room-gate').style.display = 'none';
                 document.getElementById('chat-screen').style.display = 'flex';
@@ -591,8 +601,7 @@ CHAT_HTML = """
 </html>
 """
 
-# Simple dynamic dictionary for active room passwords validation (RAM based storage for rooms)
-ROOM_PASSWORDS = {"secret_tunnel_999": "guru123"} # Default example room
+ROOM_PASSWORDS = {"secret_tunnel_999": "guru123"}
 
 @app.route('/')
 def home():
@@ -739,13 +748,11 @@ def chat():
         return redirect(url_for('home'))
     return CHAT_HTML
 
-# Secure Room Validation Socket Handlers
 @socketio.on('verify_and_join')
 def handle_room_verification(data):
     room = data.get('room')
     password = data.get('password')
     
-    # If room doesn't exist yet, register it dynamically with the entered password on first creation
     if room not in ROOM_PASSWORDS:
         ROOM_PASSWORDS[room] = password
         
