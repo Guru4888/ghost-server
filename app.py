@@ -30,6 +30,13 @@ def init_db():
             username TEXT PRIMARY KEY
         )
     ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS contacts (
+            owner TEXT,
+            contact_username TEXT,
+            PRIMARY KEY (owner, contact_username)
+        )
+    ''')
     cursor.execute("SELECT * FROM users WHERE username = 'admin'")
     if not cursor.fetchone():
         cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
@@ -439,8 +446,16 @@ CHAT_HTML = """
         .lobby-box button { width: 100%; padding: 10px; background: #1f6feb; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 8px; }
         .lobby-box button:hover { background: #388bfd; }
 
-        .rooms-history { margin-top: 15px; text-align: left; }
-        .rooms-history h4 { font-size: 12px; color: #8b949e; margin-bottom: 8px; border-bottom: 1px solid #30363d; padding-bottom: 4px; }
+        .contacts-section { margin-top: 15px; text-align: left; border-top: 1px solid #30363d; padding-top: 10px; }
+        .contacts-section h4 { font-size: 12px; color: #8b949e; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center; }
+        .contact-item { background: #21262d; padding: 8px 10px; margin-bottom: 6px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #30363d; font-size: 13px; }
+        .contact-actions { display: flex; gap: 4px; }
+        .btn-mini { padding: 4px 8px; border-radius: 4px; border: none; font-size: 11px; font-weight: bold; cursor: pointer; color: white; }
+        .btn-chat-contact { background: #238636; }
+        .btn-del-contact { background: #da3633; }
+
+        .rooms-history { margin-top: 12px; text-align: left; border-top: 1px solid #30363d; padding-top: 10px; }
+        .rooms-history h4 { font-size: 12px; color: #8b949e; margin-bottom: 6px; }
         .room-item { background: #21262d; padding: 8px 12px; margin-bottom: 6px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #30363d; font-size: 13px; cursor: pointer; }
         .room-item:hover { border-color: #58a6ff; }
 
@@ -475,7 +490,6 @@ CHAT_HTML = """
         
         .chat-media { max-width: 100%; max-height: 200px; border-radius: 6px; margin-top: 4px; display: block; cursor: pointer; }
         
-        /* Video Screen Half-Half Vertical Split Layout */
         #video-container { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.98); z-index: 1000; flex-direction: column; }
         .video-box { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; }
         .video-header-bar { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: #161b22; border-bottom: 1px solid #30363d; z-index: 10; }
@@ -491,20 +505,36 @@ CHAT_HTML = """
 
     <div id="room-lobby">
         <div class="lobby-box">
-            <h3>🌐 Room Gateway</h3>
-            <p style="color: #8b949e; font-size: 11px; margin-bottom: 10px;">Enter room details to create or join.</p>
-            <input type="text" id="room-name-input" placeholder="Room Name" autocomplete="off">
-            <input type="text" id="room-pass-input" placeholder="Room Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
-            <button id="gate-btn" onclick="joinProtectedRoom()">Join / Create Room</button>
-            <div id="gate-error" style="color: #f85149; font-size: 12px; margin-top: 6px;"></div>
+            <h3>🌐 Ghost Contacts & Rooms</h3>
+            <p style="color: #8b949e; font-size: 11px; margin-bottom: 8px;">Add friends or join custom rooms.</p>
+            
+            <div style="display: flex; gap: 5px; margin-bottom: 6px;">
+                <input type="text" id="add-contact-input" placeholder="Enter Friend Username" autocomplete="off" style="margin:0;">
+                <button onclick="addContact()" style="width: auto; margin:0; background:#238636; padding: 0 12px;">Add</button>
+            </div>
+            <div id="contact-error" style="color: #f85149; font-size: 11px; margin-bottom: 6px; text-align: left;"></div>
 
-            <div class="rooms-history">
-                <h4>📂 Recently Joined Rooms</h4>
-                <div id="joined-rooms-list" style="max-height: 140px; overflow-y: auto;">
-                    <div style="color: #8b949e; font-size: 11px; text-align: center; padding: 5px;">No rooms joined yet</div>
+            <div class="contacts-section">
+                <h4>👥 My Contacts <span id="contact-count" style="color:#58a6ff;">(0)</span></h4>
+                <div id="contacts-list" style="max-height: 120px; overflow-y: auto;">
+                    <div style="color: #8b949e; font-size: 11px; text-align: center; padding: 5px;">No contacts added yet</div>
                 </div>
             </div>
-            <button onclick="instantLogout()" style="background: #da3633; margin-top: 15px;">🚪 Logout Portal</button>
+
+            <div style="margin: 12px 0 6px 0; border-top: 1px solid #30363d; padding-top: 8px;">
+                <input type="text" id="room-name-input" placeholder="Manual Room Name" autocomplete="off">
+                <input type="text" id="room-pass-input" placeholder="Room Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
+                <button id="gate-btn" onclick="joinProtectedRoom()">Join / Create Manual Room</button>
+                <div id="gate-error" style="color: #f85149; font-size: 12px; margin-top: 4px;"></div>
+            </div>
+
+            <div class="rooms-history">
+                <h4>📂 Recent Rooms</h4>
+                <div id="joined-rooms-list" style="max-height: 100px; overflow-y: auto;">
+                    <div style="color: #8b949e; font-size: 11px; text-align: center; padding: 3px;">No rooms joined yet</div>
+                </div>
+            </div>
+            <button onclick="instantLogout()" style="background: #da3633; margin-top: 12px;">🚪 Logout Portal</button>
         </div>
     </div>
 
@@ -588,7 +618,7 @@ CHAT_HTML = """
         let typingTimeout = null;
         let lastSender = null;
         let isE2EEActive = localStorage.getItem('ghost_e2ee') === 'true';
-        let currentFacingMode = 'user'; // 'user' for front, 'environment' for back
+        let currentFacingMode = 'user';
         updateE2EEButtonUI();
         renderJoinedRooms();
 
@@ -600,12 +630,84 @@ CHAT_HTML = """
                     if(data.is_blocked || data.is_deleted) { instantLogout(); return; }
                     myUsername = data.username;
                     if(data.is_admin) { document.getElementById('admin-panel-btn').style.display = 'inline-block'; }
+                    fetchContacts();
                 } else { window.location.href = "/"; }
             } catch(e) { window.location.href = "/"; }
         }
         initChat();
 
+        async function fetchContacts() {
+            try {
+                let res = await fetch('/get-contacts');
+                let data = await res.json();
+                if(res.ok) {
+                    renderContactsList(data.contacts);
+                }
+            } catch(e) {}
+        }
+
+        function renderContactsList(contacts) {
+            let listEl = document.getElementById('contacts-list');
+            document.getElementById('contact-count').innerText = `(${contacts.length})`;
+            if(contacts.length === 0) {
+                listEl.innerHTML = `<div style="color: #8b949e; font-size: 11px; text-align: center; padding: 5px;">No contacts added yet</div>`;
+                return;
+            }
+            listEl.innerHTML = "";
+            contacts.forEach(c => {
+                listEl.innerHTML += `
+                    <div class="contact-item">
+                        <span>👤 ${c}</span>
+                        <div class="contact-actions">
+                            <button class="btn-mini btn-chat-contact" onclick="startDirectChat('${c}')">Chat</button>
+                            <button class="btn-mini btn-del-contact" onclick="removeContact('${c}')">✕</button>
+                        </div>
+                    </div>
+                `;
+            });
+        }
+
+        async function addContact() {
+            const input = document.getElementById('add-contact-input');
+            const errEl = document.getElementById('contact-error');
+            const targetUser = input.value.trim();
+            errEl.innerText = "";
+            if(!targetUser) { errEl.innerText = "Enter a username!"; return; }
+
+            let res = await fetch('/add-contact', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contact: targetUser })
+            });
+            let result = await res.json();
+            if(res.ok && result.status === 'success') {
+                input.value = "";
+                fetchContacts();
+            } else {
+                errEl.innerText = result.message || "Failed to add contact";
+            }
+        }
+
+        async function removeContact(targetUser) {
+            let res = await fetch('/remove-contact', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contact: targetUser })
+            });
+            if(res.ok) { fetchContacts(); }
+        }
+
+        function startDirectChat(friendName) {
+            // Create a consistent private room name combining both usernames alphabetically
+            let users = [myUsername, friendName].sort();
+            currentRoom = "private_" + users[0] + "_" + users[1];
+            roomPassword = "ghost_secure_direct_pass_999";
+            
+            socket.emit('verify_and_join', { room: currentRoom, password: roomPassword, user: myUsername });
+        }
+
         function saveRoomToHistory(name) {
+            if(name.startsWith("private_")) return; // Don't show direct private room hashes in manual recent rooms
             let history = JSON.parse(localStorage.getItem('ghost_rooms_history') || '[]');
             if (!history.includes(name)) { history.push(name); localStorage.setItem('ghost_rooms_history', JSON.stringify(history)); }
             renderJoinedRooms();
@@ -614,7 +716,7 @@ CHAT_HTML = """
         function renderJoinedRooms() {
             let historyListEl = document.getElementById('joined-rooms-list');
             let history = JSON.parse(localStorage.getItem('ghost_rooms_history') || '[]');
-            if(history.length === 0) { historyListEl.innerHTML = `<div style="color: #8b949e; font-size: 11px; text-align: center; padding: 5px;">No rooms joined yet</div>`; return; }
+            if(history.length === 0) { historyListEl.innerHTML = `<div style="color: #8b949e; font-size: 11px; text-align: center; padding: 3px;">No rooms joined yet</div>`; return; }
             historyListEl.innerHTML = "";
             history.forEach(rName => {
                 historyListEl.innerHTML += `<div class="room-item" onclick="quickSelectRoom('${rName}')"><span>👻 ${rName}</span><span style="font-size:10px; color:#58a6ff;">Select ➔</span></div>`;
@@ -636,17 +738,18 @@ CHAT_HTML = """
             errEl.innerText = ""; btnEl.innerText = "Connecting..."; btnEl.disabled = true;
             currentRoom = rName; roomPassword = rPass;
             socket.emit('verify_and_join', { room: currentRoom, password: roomPassword, user: myUsername });
-            setTimeout(() => { if(btnEl.innerText === "Connecting...") { btnEl.innerText = "Join / Create Room"; btnEl.disabled = false; } }, 6000);
+            setTimeout(() => { if(btnEl.innerText === "Connecting...") { btnEl.innerText = "Join / Create Manual Room"; btnEl.disabled = false; } }, 6000);
         }
 
         socket.on('room_join_response', (data) => {
             const btnEl = document.getElementById("gate-btn");
-            if(btnEl) { btnEl.innerText = "Join / Create Room"; btnEl.disabled = false; }
+            if(btnEl) { btnEl.innerText = "Join / Create Manual Room"; btnEl.disabled = false; }
             if(data.status === "success") {
                 saveRoomToHistory(currentRoom);
                 document.getElementById('room-lobby').style.display = 'none';
                 document.getElementById('chat-screen').style.display = 'flex';
-                document.getElementById('room-title').innerText = "👻 " + currentRoom + ` (${data.active_users} online)`;
+                let displayTitle = currentRoom.startsWith("private_") ? "Direct Secure Chat" : currentRoom;
+                document.getElementById('room-title').innerText = "👻 " + displayTitle + ` (${data.active_users} online)`;
             } else {
                 alert(data.message || "Incorrect room password!");
                 document.getElementById('gate-error').innerText = data.message || "Incorrect room password!";
@@ -660,11 +763,13 @@ CHAT_HTML = """
             document.getElementById('room-lobby').style.display = 'flex';
             document.getElementById('messages').innerHTML = "";
             renderJoinedRooms();
+            fetchContacts();
         }
 
         socket.on('room_users_update', (data) => {
             if(data.room === currentRoom) {
-                document.getElementById('room-title').innerText = "👻 " + currentRoom + ` (${data.active_users} online)`;
+                let displayTitle = currentRoom.startsWith("private_") ? "Direct Secure Chat" : currentRoom;
+                document.getElementById('room-title').innerText = "👻 " + displayTitle + ` (${data.active_users} online)`;
                 document.getElementById('display-status').innerText = `● Connected (${data.users.join(', ')})`;
             }
         });
@@ -818,7 +923,7 @@ CHAT_HTML = """
                     });
                 } else {
                     statusTitle.innerText = "📞 Audio Call Connected";
-                    localPane.style.display = 'none'; // Audio call me sirf remote/partner ki audio sunai degi
+                    localPane.style.display = 'none';
                     localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
                 }
 
@@ -1021,6 +1126,54 @@ def check_session():
     if session.get('authenticated') and not is_blocked and not is_deleted: ONLINE_USERS.add(user)
     return jsonify({"authenticated": session.get('authenticated', False) and not is_blocked and not is_deleted, "is_admin": session.get('is_admin', False), "username": user, "is_blocked": is_blocked, "is_deleted": is_deleted})
 
+@app.route('/get-contacts')
+def get_contacts():
+    user = session.get('user')
+    if not user: return jsonify({"contacts": []}), 401
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT contact_username FROM contacts WHERE owner = ?", (user,))
+    contacts = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    return jsonify({"contacts": contacts})
+
+@app.route('/add-contact', methods=['POST'])
+def add_contact():
+    user = session.get('user')
+    if not user: return jsonify({"status": "error", "message": "Unauthorized"}), 401
+    target = request.json.get('contact', '').strip()
+    if not target: return jsonify({"status": "error", "message": "Enter a username"}), 400
+    if target == user: return jsonify({"status": "error", "message": "Cannot add yourself"}), 400
+
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM users WHERE username = ?", (target,))
+    if not cursor.fetchone():
+        conn.close()
+        return jsonify({"status": "error", "message": "User does not exist!"}), 404
+
+    cursor.execute("SELECT * FROM contacts WHERE owner = ? AND contact_username = ?", (user, target))
+    if cursor.fetchone():
+        conn.close()
+        return jsonify({"status": "error", "message": "Already in contacts!"}), 400
+
+    cursor.execute("INSERT INTO contacts (owner, contact_username) VALUES (?, ?)", (user, target))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "success"})
+
+@app.route('/remove-contact', methods=['POST'])
+def remove_contact():
+    user = session.get('user')
+    if not user: return jsonify({"status": "error", "message": "Unauthorized"}), 401
+    target = request.json.get('contact', '').strip()
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM contacts WHERE owner = ? AND contact_username = ?", (user, target))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "success"})
+
 @app.route('/upload-attachment', methods=['POST'])
 def upload_attachment():
     if 'file' not in request.files:
@@ -1088,6 +1241,7 @@ def delete_user():
         cursor = conn.cursor()
         cursor.execute("DELETE FROM users WHERE username = ?", (u,))
         cursor.execute("DELETE FROM blocked WHERE username = ?", (u,))
+        cursor.execute("DELETE FROM contacts WHERE owner = ? OR contact_username = ?", (u, u))
         conn.commit()
         conn.close()
     return jsonify({"status": "success"})
