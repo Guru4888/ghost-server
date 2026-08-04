@@ -5,7 +5,6 @@ import os
 app = Flask(__name__)
 app.secret_key = "ghost_super_secret_key_multi_user_998877"
 
-# Database & Tracking
 REGISTERED_USERS = {
     "admin": "guru&guru16230"
 }
@@ -263,10 +262,10 @@ CHAT_HTML = """
         .btn-e2ee.active { background-color: #238636; color: white; border-color: #2ea043; }
         .btn-admin { background-color: #d29922; display: none; color: #0d1117; }
         .btn-logout-manual { background-color: #da3633; color: white; }
-        #messages { flex-grow: 1; overflow-y: auto; padding: 15px; background: #0d1117; display: flex; flex-direction: column; gap: 10px; }
-        .msg-card { padding: 8px 12px; border-radius: 10px; max-width: 75%; word-wrap: break-word; font-size: 0.9rem; position: relative; }
-        .my-msg { background: #1f6feb; color: #ffffff; align-self: flex-end; }
-        .other-msg { background: #21262d; color: #c9d1d9; align-self: flex-start; border: 1px solid #30363d; }
+        #messages { flex-grow: 1; overflow-y: auto; padding: 15px; background: #0d1117; display: flex; flex-direction: column; gap: 12px; }
+        .msg-card { padding: 4px 8px; max-width: 75%; word-wrap: break-word; font-size: 0.9rem; position: relative; background: transparent !important; border: none !important; }
+        .my-msg { align-self: flex-end; }
+        .other-msg { align-self: flex-start; }
         .user-id { font-size: 0.7em; color: #8b949e; margin-bottom: 2px; display: block; font-weight: bold; }
         .msg-footer { display: flex; justify-content: flex-end; align-items: center; gap: 4px; font-size: 0.65rem; margin-top: 2px; color: #cbd5e1; }
         .ticks { font-size: 0.85rem; font-family: monospace; color: #8b949e; }
