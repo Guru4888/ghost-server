@@ -51,9 +51,23 @@ LOGIN_HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>System Access Portal</title>
+    <title>Calculator & System Portal</title>
     <style>
         body { background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; user-select: none; }
+        
+        /* Calculator Screen Style */
+        #calc-screen { display: flex; justify-content: center; align-items: center; width: 100%; height: 100%; position: fixed; top: 0; left: 0; background: #0d1117; z-index: 1000; }
+        .calculator { background: #161b22; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 280px; border: 1px solid #30363d; text-align: center; }
+        #calc-display { width: 100%; height: 45px; background: #010409; border: 1px solid #30363d; color: #3fb950; font-size: 22px; text-align: right; padding: 5px 10px; margin-bottom: 12px; border-radius: 6px; box-sizing: border-box; }
+        .calc-keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+        .calc-btn { padding: 12px; background: #21262d; color: white; border: 1px solid #30363d; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        .calc-btn:hover { background: #30363d; }
+        .calc-btn.operator { background: #1f6feb; border-color: #1f6feb; }
+        .calc-btn.equal { background: #238636; border-color: #238636; grid-column: span 2; }
+        .calc-btn.clear { background: #da3633; border-color: #da3633; }
+
+        /* Portal Box Style */
+        #portal-screen { display: none; justify-content: center; align-items: center; width: 100%; height: 100%; }
         .portal-box { background: #161b22; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 330px; text-align: center; border: 1px solid #30363d; }
         .portal-box input, .portal-box select { width: 100%; padding: 10px; margin: 6px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
         .secure-pass { -webkit-text-security: disc; text-security: disc; }
@@ -69,45 +83,114 @@ LOGIN_HTML = """
     </style>
 </head>
 <body>
-    <div class="portal-box" autocomplete="off">
-        <h2>🔒 Multi-User Portal</h2>
-        <div class="tabs">
-            <button class="tab-btn active" onclick="switchTab('login', event)">Login</button>
-            <button class="tab-btn" onclick="switchTab('register', event)">Register</button>
-            <button class="tab-btn" onclick="switchTab('forgot', event)">Forgot?</button>
+    <!-- Calculator Screen -->
+    <div id="calc-screen">
+        <div class="calculator">
+            <input type="text" id="calc-display" readonly value="0">
+            <div class="calc-keys">
+                <button class="calc-btn clear" onclick="clearCalc()">C</button>
+                <button class="calc-btn" onclick="pressCalc('(')">(</button>
+                <button class="calc-btn" onclick="pressCalc(')')">)</button>
+                <button class="calc-btn operator" onclick="pressCalc('/')">/</button>
+                
+                <button class="calc-btn" onclick="pressCalc('7')">7</button>
+                <button class="calc-btn" onclick="pressCalc('8')">8</button>
+                <button class="calc-btn" onclick="pressCalc('9')">9</button>
+                <button class="calc-btn operator" onclick="pressCalc('*')">*</button>
+                
+                <button class="calc-btn" onclick="pressCalc('4')">4</button>
+                <button class="calc-btn" onclick="pressCalc('5')">5</button>
+                <button class="calc-btn" onclick="pressCalc('6')">6</button>
+                <button class="calc-btn operator" onclick="pressCalc('-')">-</button>
+                
+                <button class="calc-btn" onclick="pressCalc('1')">1</button>
+                <button class="calc-btn" onclick="pressCalc('2')">2</button>
+                <button class="calc-btn" onclick="pressCalc('3')">3</button>
+                <button class="calc-btn operator" onclick="pressCalc('+')">+</button>
+                
+                <button class="calc-btn" onclick="pressCalc('0')">0</button>
+                <button class="calc-btn" onclick="pressCalc('.')">.</button>
+                <button class="calc-btn equal" onclick="calculateResult()">=</button>
+            </div>
         </div>
+    </div>
 
-        <div id="login-form" class="form-section active">
-            <input type="text" id="login-user" placeholder="Username" autocomplete="off">
-            <input type="text" id="login-pass" placeholder="Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
-            <button onclick="loginUser()">Login to Portal</button>
-            <div id="loginError" class="error-msg"></div>
-        </div>
+    <!-- Actual Portal Screen -->
+    <div id="portal-screen">
+        <div class="portal-box" autocomplete="off">
+            <h2>🔒 Multi-User Portal</h2>
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchTab('login', event)">Login</button>
+                <button class="tab-btn" onclick="switchTab('register', event)">Register</button>
+                <button class="tab-btn" onclick="switchTab('forgot', event)">Forgot?</button>
+            </div>
 
-        <div id="register-form" class="form-section">
-            <input type="text" id="reg-user" placeholder="Choose Username" autocomplete="off">
-            <input type="text" id="reg-pass" placeholder="Choose Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
-            <select id="reg-q">
-                <option value="What is your pet name?">What is your pet name?</option>
-                <option value="What was your first school?">What was your first school?</option>
-                <option value="What is your favorite food?">What is your favorite food?</option>
-            </select>
-            <input type="text" id="reg-ans" placeholder="Security Answer (for reset)" autocomplete="off">
-            <button onclick="registerUser()">Create Account</button>
-            <div id="regMsg" class="error-msg"></div>
-        </div>
+            <div id="login-form" class="form-section active">
+                <input type="text" id="login-user" placeholder="Username" autocomplete="off">
+                <input type="text" id="login-pass" placeholder="Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
+                <button onclick="loginUser()">Login to Portal</button>
+                <div id="loginError" class="error-msg"></div>
+            </div>
 
-        <div id="forgot-form" class="form-section">
-            <input type="text" id="forgot-user" placeholder="Enter Username" autocomplete="off" onblur="fetchSecQuestion()">
-            <div id="q-display" style="color: #58a6ff; font-size: 11px; margin: 4px 0; text-align: left;"></div>
-            <input type="text" id="forgot-ans" placeholder="Security Answer" autocomplete="off">
-            <input type="text" id="forgot-new-pass" placeholder="New Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
-            <button onclick="resetPassword()" style="background: #d29922; color: #0d1117;">Verify & Reset</button>
-            <div id="forgotMsg" class="error-msg"></div>
+            <div id="register-form" class="form-section">
+                <input type="text" id="reg-user" placeholder="Choose Username" autocomplete="off">
+                <input type="text" id="reg-pass" placeholder="Choose Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
+                <select id="reg-q">
+                    <option value="What is your pet name?">What is your pet name?</option>
+                    <option value="What was your first school?">What was your first school?</option>
+                    <option value="What is your favorite food?">What is your favorite food?</option>
+                </select>
+                <input type="text" id="reg-ans" placeholder="Security Answer (for reset)" autocomplete="off">
+                <button onclick="registerUser()">Create Account</button>
+                <div id="regMsg" class="error-msg"></div>
+            </div>
+
+            <div id="forgot-form" class="form-section">
+                <input type="text" id="forgot-user" placeholder="Enter Username" autocomplete="off" onblur="fetchSecQuestion()">
+                <div id="q-display" style="color: #58a6ff; font-size: 11px; margin: 4px 0; text-align: left;"></div>
+                <input type="text" id="forgot-ans" placeholder="Security Answer" autocomplete="off">
+                <input type="text" id="forgot-new-pass" placeholder="New Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
+                <button onclick="resetPassword()" style="background: #d29922; color: #0d1117;">Verify & Reset</button>
+                <div id="forgotMsg" class="error-msg"></div>
+            </div>
         </div>
     </div>
 
     <script>
+        let calcInput = "0";
+
+        function pressCalc(val) {
+            if(calcInput === "0" && val !== '.') {
+                calcInput = val;
+            } else {
+                calcInput += val;
+            }
+            document.getElementById("calc-display").value = calcInput;
+        }
+
+        function clearCalc() {
+            calcInput = "0";
+            document.getElementById("calc-display").value = calcInput;
+        }
+
+        function calculateResult() {
+            // Secret Code Trigger: Agar user '786' type karke '=' dabaye toh portal khul jayega
+            if(calcInput.trim() === "786") {
+                document.getElementById("calc-screen").style.display = "none";
+                document.getElementById("portal-screen").style.display = "flex";
+                return;
+            }
+
+            try {
+                let res = eval(calcInput);
+                calcInput = res.toString();
+                document.getElementById("calc-display").value = calcInput;
+            } catch(e) {
+                document.getElementById("calc-display").value = "Error";
+                calcInput = "0";
+            }
+        }
+
         function switchTab(tab, event) {
             document.querySelectorAll('.form-section').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
