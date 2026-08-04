@@ -535,9 +535,11 @@ CHAT_HTML = """
         }
 
         const socket = io({ 
-            transports: ['websocket', 'polling'],
+            transports: ['polling', 'websocket'],
             reconnection: true,
-            reconnectionAttempts: 5
+            reconnectionAttempts: 10,
+            reconnectionDelay: 1000,
+            timeout: 20000
         });
 
         let currentRoom = "";
@@ -618,6 +620,15 @@ CHAT_HTML = """
             roomPassword = rPass;
 
             socket.emit('verify_and_join', { room: currentRoom, password: roomPassword, user: myUsername });
+
+            // Safety timeout taaki button hamesha "Connecting..." par na fase
+            setTimeout(() => {
+                if(btnEl.innerText === "Connecting...") {
+                    btnEl.innerText = "Join / Create Room";
+                    btnEl.disabled = false;
+                    errEl.innerText = "Connection timeout or server waking up. Try again!";
+                }
+            }, 7000);
         }
 
         socket.on('room_join_response', (data) => {
