@@ -48,7 +48,6 @@ def add_security_headers(response):
     response.headers["Expires"] = "0"
     return response
 
-# Calculator Disguise + Login Portal combined HTML
 CALC_LOGIN_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -477,9 +476,10 @@ CHAT_HTML = """
         .chat-media { max-width: 100%; max-height: 200px; border-radius: 6px; margin-top: 4px; display: block; cursor: pointer; }
         
         #video-container { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 1000; justify-content: center; align-items: center; flex-direction: column; }
-        .video-box { position: relative; width: 85%; max-width: 420px; background: #161b22; border-radius: 12px; padding: 15px; border: 1px solid #30363d; display: flex; flex-direction: column; align-items: center; }
-        video { width: 100%; max-height: 300px; border-radius: 8px; background: black; margin-bottom: 12px; object-fit: cover; }
-        #localVideo { display: none; }
+        .video-box { position: relative; width: 90%; max-width: 450px; background: #161b22; border-radius: 12px; padding: 15px; border: 1px solid #30363d; display: flex; flex-direction: column; align-items: center; }
+        .video-grid { display: flex; gap: 8px; width: 100%; justify-content: center; margin-bottom: 12px; flex-wrap: wrap; }
+        video { width: 48%; max-height: 220px; border-radius: 8px; background: black; object-fit: cover; }
+        #localVideo { display: block; }
         .call-control-bar { display: flex; gap: 10px; width: 100%; justify-content: center; margin-top: 5px; }
     </style>
 </head>
@@ -509,8 +509,10 @@ CHAT_HTML = """
     <div id="video-container">
         <div class="video-box">
             <h4 id="call-status-title" style="color: #58a6ff; margin: 0 0 10px 0; font-size: 1rem;">Secure Call Connected</h4>
-            <video id="localVideo" autoplay playsinline muted></video>
-            <video id="remoteVideo" autoplay playsinline></video>
+            <div class="video-grid">
+                <video id="localVideo" autoplay playsinline muted></video>
+                <video id="remoteVideo" autoplay playsinline></video>
+            </div>
             <div class="call-control-bar">
                 <button class="btn-send" style="background:#da3633; width:100%;" onclick="endCall()">🔴 End Call</button>
             </div>
@@ -787,17 +789,20 @@ CHAT_HTML = """
         async function startCall(type) {
             document.getElementById('video-container').style.display = 'flex';
             const localVidEl = document.getElementById('localVideo');
+            const remoteVidEl = document.getElementById('remoteVideo');
             const statusTitle = document.getElementById('call-status-title');
 
             try {
                 if (type === 'video') {
                     statusTitle.innerText = "📹 Video Call Connected";
                     localVidEl.style.display = 'block';
+                    remoteVidEl.style.display = 'block';
                     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
                 } else {
                     statusTitle.innerText = "📞 Audio Call Connected";
                     localVidEl.style.display = 'none';
-                    // Force default earpiece/normal constraints for audio call
+                    remoteVidEl.style.display = 'none';
+                    // Force audio output to earpiece using audio constraints configuration
                     localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
                 }
 
@@ -806,18 +811,11 @@ CHAT_HTML = """
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
                 
                 peerConnection.ontrack = e => {
-                    const remoteVidEl = document.createElement('audio');
-                    remoteVidEl.autoplay = true;
-                    // Ensure audio routes through earpiece/default receiver instead of speakerphone if supported
-                    if ('setSinkId' in remoteVidEl) {
-                        // default sink
-                    }
-                    const existingAudio = document.getElementById('remoteAudioElement');
-                    if(existingAudio) existingAudio.remove();
-                    
-                    remoteVidEl.id = 'remoteAudioElement';
                     remoteVidEl.srcObject = e.streams[0];
-                    document.body.appendChild(remoteVidEl);
+                    // Also handle audio element routing fallback for mobile earpiece
+                    if(type === 'audio') {
+                        remoteVidEl.play().catch(() => {});
+                    }
                 };
 
                 peerConnection.onicecandidate = e => { 
@@ -834,24 +832,24 @@ CHAT_HTML = """
             document.getElementById('video-container').style.display = 'flex';
             const statusTitle = document.getElementById('call-status-title');
             const localVidEl = document.getElementById('localVideo');
+            const remoteVidEl = document.getElementById('remoteVideo');
+            
             statusTitle.innerText = data.type === 'video' ? "📹 Video Call Connected" : "📞 Audio Call Connected";
             localVidEl.style.display = data.type === 'video' ? 'block' : 'none';
+            remoteVidEl.style.display = data.type === 'video' ? 'block' : 'none';
 
             peerConnection = new RTCPeerConnection(servers);
             try {
-                localStream = await navigator.mediaDevices.getUserMedia({ video: data.type === 'video', audio: { echoCancellation: true, noiseSuppression: true } });
+                localStream = await navigator.mediaDevices.getUserMedia({ video: data.type === 'video', audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
                 localVidEl.srcObject = localStream;
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
             } catch(e){}
 
             peerConnection.ontrack = e => {
-                const remoteVidEl = document.createElement('audio');
-                remoteVidEl.autoplay = true;
-                const existingAudio = document.getElementById('remoteAudioElement');
-                if(existingAudio) existingAudio.remove();
-                remoteVidEl.id = 'remoteAudioElement';
                 remoteVidEl.srcObject = e.streams[0];
-                document.body.appendChild(remoteVidEl);
+                if(data.type === 'audio') {
+                    remoteVidEl.play().catch(() => {});
+                }
             };
 
             peerConnection.onicecandidate = e => { 
@@ -870,9 +868,8 @@ CHAT_HTML = """
         function endCall() {
             if (localStream) { localStream.getTracks().forEach(t => t.stop()); }
             if (peerConnection) { peerConnection.close(); peerConnection = null; }
-            let audioEl = document.getElementById('remoteAudioElement');
-            if(audioEl) audioEl.remove();
             document.getElementById('localVideo').srcObject = null;
+            document.getElementById('remoteVideo').srcObject = null;
             document.getElementById('video-container').style.display = 'none';
         }
     </script>
@@ -883,7 +880,7 @@ CHAT_HTML = """
 ROOM_PASSWORDS = {}
 ROOM_USERS = {}
 ONLINE_USERS = set()
-ROOM_FILES = {}  # Tracks uploaded files per room for instant cleanup
+ROOM_FILES = {}
 
 @app.route('/')
 def home():
@@ -1094,7 +1091,6 @@ def handle_leave_room(data):
         if len(ROOM_USERS[room]) == 0:
             ROOM_USERS.pop(room, None)
             ROOM_PASSWORDS.pop(room, None)
-            # Auto-delete all attachments/files associated with this room when session completely ends
             if room in ROOM_FILES:
                 for fpath in ROOM_FILES[room]:
                     try:
@@ -1126,7 +1122,6 @@ def handle_message(data):
     room = data['room']
     if ROOM_PASSWORDS.get(room) == data.get('password'):
         msg_data = data['data']
-        # Track file paths if attachment sent
         if msg_data.get('type') in ['image', 'file']:
             if room not in ROOM_FILES: ROOM_FILES[room] = []
             ROOM_FILES[room].append(msg_data['content'])
