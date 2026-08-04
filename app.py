@@ -523,7 +523,6 @@ CHAT_HTML = """
         let isE2EEActive = localStorage.getItem('ghost_e2ee') === 'true';
         updateE2EEButtonUI();
 
-        // Load saved rooms history on startup
         renderJoinedRooms();
 
         async function initChat() {
@@ -559,7 +558,7 @@ CHAT_HTML = """
             historyListEl.innerHTML = "";
             roomNames.forEach(rName => {
                 historyListEl.innerHTML += `
-                    <div class="room-item" onclick="quickJoinRoom('${rName}', '${history[rName]}')">
+                    <div class="room-item" onclick="promptQuickJoin('${rName}')">
                         <span>👻 ${rName}</span>
                         <span style="font-size:10px; color:#58a6ff;">Join ➔</span>
                     </div>
@@ -567,10 +566,16 @@ CHAT_HTML = """
             });
         }
 
-        function quickJoinRoom(rName, rPass) {
-            document.getElementById("room-name-input").value = rName;
-            document.getElementById("room-pass-input").value = rPass;
-            joinProtectedRoom();
+        function promptQuickJoin(rName) {
+            let history = JSON.parse(localStorage.getItem('ghost_rooms_history') || '{}');
+            let savedPass = history[rName] || "";
+
+            let enteredPass = prompt(`Enter password for room "${rName}":`, savedPass);
+            if (enteredPass !== null) {
+                document.getElementById("room-name-input").value = rName;
+                document.getElementById("room-pass-input").value = enteredPass;
+                joinProtectedRoom();
+            }
         }
 
         function joinProtectedRoom() {
