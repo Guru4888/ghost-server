@@ -35,7 +35,8 @@ def init_db():
 
 init_db()
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', ping_timeout=60, ping_interval=25)
+# Render ke liye socketio connection ko stable banane ke liye async_mode aur ping settings
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', ping_timeout=120, ping_interval=25, logger=True, engineio_logger=True)
 
 @app.after_request
 def add_security_headers(response):
@@ -258,7 +259,7 @@ ADMIN_HTML = """
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
-        const socket = io();
+        const socket = io({ transports: ['polling', 'websocket'] });
         let spyingRoom = null;
 
         async function fetchDashboard() {
@@ -534,12 +535,17 @@ CHAT_HTML = """
             document.getElementById('security-warning').style.display = 'flex';
         }
 
+        // Render ke liye polling first aur websocket upgrade configuration
         const socket = io({ 
             transports: ['polling', 'websocket'],
             reconnection: true,
-            reconnectionAttempts: 10,
+            reconnectionAttempts: Infinity,
             reconnectionDelay: 1000,
-            timeout: 20000
+            timeout: 30000
+        });
+
+        socket.on('connect', () => {
+            console.log("Socket connected successfully!");
         });
 
         let currentRoom = "";
@@ -621,14 +627,13 @@ CHAT_HTML = """
 
             socket.emit('verify_and_join', { room: currentRoom, password: roomPassword, user: myUsername });
 
-            // Safety timeout taaki button hamesha "Connecting..." par na fase
+            // 5 second fallback timer agar server slow ho
             setTimeout(() => {
                 if(btnEl.innerText === "Connecting...") {
                     btnEl.innerText = "Join / Create Room";
                     btnEl.disabled = false;
-                    errEl.innerText = "Connection timeout or server waking up. Try again!";
                 }
-            }, 7000);
+            }, 6000);
         }
 
         socket.on('room_join_response', (data) => {
