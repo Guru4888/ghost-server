@@ -47,6 +47,15 @@ def init_db():
             timestamp REAL
         )
     ''')
+    # Settings table for global beep interval (default 30 seconds = 30000 ms)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT
+        )
+    ''')
+    cursor.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('beep_interval', '30000')")
+    
     cursor.execute("SELECT * FROM users WHERE username = 'admin'")
     if not cursor.fetchone():
         cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
@@ -298,6 +307,18 @@ ADMIN_HTML = """
         <h2>🛡️ Admin Control Panel</h2>
         <p style="color: #8b949e; font-size: 12px; margin-bottom: 15px;">Total Users: <b id="total-count" style="color:white;">0</b></p>
         
+        <!-- Beep Timing Control Section -->
+        <div class="section-title" style="color: #d29922;">⏰ Unread Alarm / Beep Interval Settings</div>
+        <div style="background: #010409; border: 1px solid #30363d; border-radius: 6px; padding: 10px; margin-bottom: 15px;">
+            <div style="font-size: 11px; color: #8b949e; margin-bottom: 6px;">Set alarm interval for all users (in seconds):</div>
+            <div style="display: flex; gap: 5px;">
+                <input type="number" id="beep-time-input" placeholder="e.g. 30" style="flex:1; padding:6px; background:#161b22; border:1px solid #30363d; color:white; border-radius:4px; font-size:12px;" autocomplete="off">
+                <button class="action-btn" style="background:#238636;" onclick="updateBeepTime()">Update All</button>
+                <button class="action-btn" style="background:#da3633;" onclick="turnOffGlobalAlarm()">Turn Off All Alarms</button>
+            </div>
+            <div id="beep-msg" style="font-size: 11px; margin-top: 4px; color: #3fb950;"></div>
+        </div>
+
         <div class="section-title">👥 Active Registered Users</div>
         <ul id="users-list"></ul>
 
@@ -339,6 +360,8 @@ ADMIN_HTML = """
                 let res = await fetch('/get-admin-data');
                 let data = await res.json();
                 document.getElementById('total-count').innerText = data.users.length;
+                document.getElementById('beep-time-input').value = data.beep_interval / 1000; // ms to seconds
+
                 let usrListEl = document.getElementById('users-list');
                 let blockedListEl = document.getElementById('blocked-list');
                 usrListEl.innerHTML = ""; blockedListEl.innerHTML = "";
@@ -371,6 +394,34 @@ ADMIN_HTML = """
                     });
                 }
             } catch(e) {}
+        }
+
+        async function updateBeepTime() {
+            let secs = document.getElementById('beep-time-input').value.trim();
+            if(!secs || isNaN(secs) || secs <= 0) { alert("Enter valid seconds!"); return; }
+            let res = await fetch('/admin-update-beep', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ seconds: parseInt(secs) })
+            });
+            let data = await res.json();
+            if(data.status === 'success') {
+                document.getElementById('beep-msg').innerText = "Beep timing updated successfully for all users!";
+                setTimeout(() => document.getElementById('beep-msg').innerText = "", 3000);
+            }
+        }
+
+        async function turnOffGlobalAlarm() {
+            let res = await fetch('/admin-update-beep', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ seconds: 0 }) // 0 means turned off
+            });
+            let data = await res.json();
+            if(data.status === 'success') {
+                document.getElementById('beep-msg').innerText = "All Alarms Turned Off Globally!";
+                setTimeout(() => document.getElementById('beep-msg').innerText = "", 3000);
+            }
         }
 
         async function blockUser(username) {
@@ -479,6 +530,7 @@ CHAT_HTML = """
         .btn-video { background-color: #8957e5; }
         .btn-e2ee { background-color: #30363d; color: #8b949e; border: 1px solid #484f58; }
         .btn-e2ee.active { background-color: #238636; color: white; border-color: #2ea043; }
+        .btn-alarm-off { background-color: #da3633; color: white; font-size: 0.65rem; display: none; }
         .btn-admin { background-color: #d29922; display: none; color: #0d1117; }
         .btn-logout-manual { background-color: #da3633; color: white; }
         
@@ -549,7 +601,7 @@ CHAT_HTML = """
         </div>
     </div>
 
-    <!-- Call Screen (Vertical Split Half-Half Layout with Mute Option) -->
+    <!-- Call Screen -->
     <div id="video-container">
         <div class="video-box">
             <div class="video-header-bar">
@@ -582,6 +634,7 @@ CHAT_HTML = """
                 <span id="display-status" class="status-text">● Secure Room Connected</span>
             </div>
             <div class="call-btns">
+                <button id="alarm-off-btn" class="btn-call btn-alarm-off" onclick="userTurnOffAlarm()">🔕 Mute Alarm</button>
                 <button id="e2ee-btn" class="btn-call btn-e2ee" onclick="toggleE2EE()">🔐</button>
                 <button class="btn-call btn-audio" onclick="startCall('audio')">📞 Audio</button>
                 <button class="btn-call btn-video" onclick="startCall('video')">📹 Video</button>
@@ -634,8 +687,85 @@ CHAT_HTML = """
         let isE2EEActive = localStorage.getItem('ghost_e2ee') === 'true';
         let currentFacingMode = 'user';
         let isMicMuted = false;
+        
+        let unreadAlertInterval = null;
+        let currentGlobalBeepInterval = 30000; // Default 30s
+
         updateE2EEButtonUI();
         renderJoinedRooms();
+
+        // Server se current beep interval fetch karo
+        async function fetchInitialSettings() {
+            try {
+                let res = await fetch('/get-settings');
+                let data = await res.json();
+                if(res.ok) { currentGlobalBeepInterval = data.beep_interval; }
+            } catch(e){}
+        }
+        fetchInitialSettings();
+
+        // Secret Alarm Sound Generator
+        function playSecretAlarmSound() {
+            if (currentGlobalBeepInterval <= 0) return; // Agar admin ne band kiya hai toh beep nahi bajegi
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(800, audioCtx.currentTime);
+                gainNode.gain.setValueAtTime(0.15, audioCtx.currentTime);
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioCtx.destination);
+
+                oscillator.start();
+                oscillator.stop(audioCtx.currentTime + 0.3);
+            } catch (e) {
+                console.log("Audio alert failed");
+            }
+        }
+
+        socket.on('trigger_unread_alarm', () => {
+            if (currentGlobalBeepInterval <= 0) return; // Agar 0 hai toh alarm trigger hi nahi hoga
+            if (!unreadAlertInterval) {
+                unreadAlertInterval = setInterval(() => {
+                    playSecretAlarmSound();
+                }, currentGlobalBeepInterval);
+                document.getElementById('alarm-off-btn').style.display = 'inline-block';
+            }
+        });
+
+        socket.on('stop_unread_alarm', () => {
+            stopUserAlarmLocal();
+        });
+
+        // User khud apne end se alarm band kar sakta hai
+        function userTurnOffAlarm() {
+            stopUserAlarmLocal();
+        }
+
+        function stopUserAlarmLocal() {
+            if (unreadAlertInterval) {
+                clearInterval(unreadAlertInterval);
+                unreadAlertInterval = null;
+            }
+            document.getElementById('alarm-off-btn').style.display = 'none';
+        }
+
+        // Admin jab timing change karega ya off karega toh sabke liye update ho jayega
+        socket.on('global_beep_update', (data) => {
+            currentGlobalBeepInterval = data.beep_interval;
+            if (currentGlobalBeepInterval <= 0) {
+                stopUserAlarmLocal(); // Agar admin ne poori tarah off kar diya
+            } else if (unreadAlertInterval) {
+                // Agar alarm chal raha hai toh naye interval ke sath restart karo
+                clearInterval(unreadAlertInterval);
+                unreadAlertInterval = setInterval(() => {
+                    playSecretAlarmSound();
+                }, currentGlobalBeepInterval);
+            }
+        });
 
         async function initChat() {
             try {
@@ -762,7 +892,7 @@ CHAT_HTML = """
                 let displayTitle = currentRoom.startsWith("private_") ? "Direct Secure Chat" : currentRoom;
                 document.getElementById('room-title').innerText = "👻 " + displayTitle + ` (${data.active_users} online)`;
                 
-                // Room join hote hi pending batch mangwayenge
+                socket.emit('stop_my_unread_alarm', { room: currentRoom, user: myUsername });
                 socket.emit('fetch_pending_messages', { room: currentRoom, user: myUsername });
             } else {
                 alert(data.message || "Incorrect room password!");
@@ -1112,6 +1242,7 @@ ROOM_PASSWORDS = {}
 ROOM_USERS = {}
 ONLINE_USERS = set()
 ROOM_FILES = {}
+USER_SID_MAP = {}
 
 @app.route('/')
 def home():
@@ -1213,6 +1344,16 @@ def check_session():
     if session.get('authenticated') and not is_blocked and not is_deleted: ONLINE_USERS.add(user)
     return jsonify({"authenticated": session.get('authenticated', False) and not is_blocked and not is_deleted, "is_admin": session.get('is_admin', False), "username": user, "is_blocked": is_blocked, "is_deleted": is_deleted})
 
+@app.route('/get-settings')
+def get_settings():
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT value FROM app_settings WHERE key = 'beep_interval'")
+    row = cursor.fetchone()
+    conn.close()
+    val = int(row[0]) if row else 30000
+    return jsonify({"beep_interval": val})
+
 @app.route('/get-contacts')
 def get_contacts():
     user = session.get('user')
@@ -1290,8 +1431,25 @@ def get_admin_data():
     users = [row[0] for row in cursor.fetchall()]
     cursor.execute("SELECT username FROM blocked")
     blocked = [row[0] for row in cursor.fetchall()]
+    cursor.execute("SELECT value FROM app_settings WHERE key = 'beep_interval'")
+    row = cursor.fetchone()
+    beep_interval = int(row[0]) if row else 30000
     conn.close()
-    return jsonify({"users": users, "blocked": blocked})
+    return jsonify({"users": users, "blocked": blocked, "beep_interval": beep_interval})
+
+@app.route('/admin-update-beep', methods=['POST'])
+def admin_update_beep():
+    if not session.get('is_admin', False): return jsonify({}), 403
+    seconds = request.json.get('seconds', 30)
+    millis = int(seconds) * 1000
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE app_settings SET value = ? WHERE key = 'beep_interval'", (str(millis),))
+    conn.commit()
+    conn.close()
+    # Real-time broadcast to everyone
+    socketio.emit('global_beep_update', {"beep_interval": millis})
+    return jsonify({"status": "success"})
 
 @app.route('/block-user', methods=['POST'])
 def block_user():
@@ -1352,6 +1510,7 @@ def handle_room_verification(data):
     room = data.get('room')
     password = data.get('password')
     username = data.get('user', 'User')
+    USER_SID_MAP[username] = request.sid
     if room not in ROOM_PASSWORDS: ROOM_PASSWORDS[room] = password
     if ROOM_PASSWORDS.get(room) == password:
         join_room(room)
@@ -1392,6 +1551,12 @@ def handle_ack_pending(data):
     cursor.execute("DELETE FROM pending_messages WHERE room = ? AND recipient = ?", (room, username))
     conn.commit()
     conn.close()
+
+@socketio.on('stop_my_unread_alarm')
+def handle_stop_alarm(data):
+    username = data.get('user')
+    if username in USER_SID_MAP:
+        emit('stop_unread_alarm', to=USER_SID_MAP[username])
 
 @socketio.on('leave_current_room')
 def handle_leave_room(data):
@@ -1447,6 +1612,9 @@ def handle_message(data):
                                (msg_data['id'], room, msg_data['sender'], recipient, str(msg_data), msg_data['timestamp']))
                 conn.commit()
                 conn.close()
+
+                if recipient in USER_SID_MAP:
+                    emit('trigger_unread_alarm', to=USER_SID_MAP[recipient])
         
         emit('receive_message', msg_data, to=room, include_self=False)
         emit('admin_spy_receive', msg_data, to=room)
