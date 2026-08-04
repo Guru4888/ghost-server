@@ -9,11 +9,11 @@ REGISTERED_USERS = {
     "admin": "guru&guru16230"
 }
 
-FAILED_ATTEMPTS = {}       
-BLOCKED_IPS = {}           
-BLOCKED_USERS = {}         
-UNBLOCK_REQUESTS = {}      
-USER_SESSIONS = {}         
+FAILED_ATTEMPTS = {}
+BLOCKED_IPS = {}
+BLOCKED_USERS = {}
+UNBLOCK_REQUESTS = {}
+USER_SESSIONS = {}
 
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
@@ -51,8 +51,8 @@ LOGIN_HTML = """
     <div class="portal-box" id="main-container">
         <h2>🔒 Secure Portal</h2>
         <div class="tabs" id="portal-tabs">
-            <button class="tab-btn active" onclick="switchTab('login')">Login</button>
-            <button class="tab-btn" onclick="switchTab('register')">Register</button>
+            <button class="tab-btn active" onclick="switchTab('login', event)">Login</button>
+            <button class="tab-btn" onclick="switchTab('register', event)">Register</button>
         </div>
 
         <div id="login-form" class="form-section active">
@@ -72,7 +72,7 @@ LOGIN_HTML = """
     </div>
 
     <script>
-        function switchTab(tab) {
+        function switchTab(tab, event) {
             document.querySelectorAll('.form-section').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
             if(tab === 'login') {
@@ -132,7 +132,7 @@ LOGIN_HTML = """
             if (response.ok && result.status === "success") {
                 msgEl.className = "success-msg";
                 msgEl.innerText = "Account created! You can now login.";
-                setTimeout(() => switchTab('login'), 1500);
+                setTimeout(() => switchTab('login', {target: document.querySelector('.tab-btn')}), 1500);
             } else {
                 msgEl.className = "error-msg";
                 msgEl.innerText = result.message || "Registration failed!";
@@ -450,7 +450,7 @@ CHAT_HTML = """
             }
         }
 
-        socket.on('offer', async (offer) => {
+        socket.on('offer', async (data) => {
             document.getElementById('video-container').style.display = 'flex';
             peerConnection = new RTCPeerConnection(servers);
             try {
@@ -469,21 +469,21 @@ CHAT_HTML = """
                 }
             };
 
-            await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+            await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
             let answer = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(answer);
             socket.emit('answer', { room: currentRoom, answer: answer });
         });
 
-        socket.on('answer', async (answer) => {
+        socket.on('answer', async (data) => {
             if(peerConnection) {
-                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
             }
         });
 
-        socket.on('ice_candidate', async (candidate) => {
-            if (peerConnection) {
-                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+        socket.on('ice_candidate', async (data) => {
+            if (peerConnection && data.candidate) {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
             }
         });
 
@@ -509,7 +509,6 @@ def logout_session():
 def manual_unblock_request():
     data = request.json
     username = data.get('username', '').strip()
-    ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     if username:
         UNBLOCK_REQUESTS["manual_" + username] = {"username": username, "status": "Pending"}
         return jsonify({"status": "success"})
@@ -611,19 +610,24 @@ def chat():
     return CHAT_HTML
 
 @socketio.on('join_room')
-def handle_join(data): join_room(data['room'])
+def handle_join(data):
+    join_room(data['room'])
 
 @socketio.on('send_message')
-def handle_message(data): emit('receive_message', data, to=data['room'])
+def handle_message(data):
+    emit('receive_message', data, to=data['room'])
 
 @socketio.on('offer')
-def handle_offer(data): emit('offer', data['offer'], to=data['room'], include_self=False)
+def handle_offer(data):
+    emit('offer', data, to=data['room'], include_self=False)
 
 @socketio.on('answer')
-def handle_answer(data): emit('answer', data['answer'], to=data['room'], include_self=False)
+def handle_answer(data):
+    emit('answer', data, to=data['room'], include_self=False)
 
 @socketio.on('ice_candidate')
-def handle_ice(data): emit('ice_candidate', data['candidate'], to=data['room'], include_self=False)
+def handle_ice(data):
+    emit('ice_candidate', data, to=data['room'], include_self=False)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
