@@ -549,12 +549,15 @@ CHAT_HTML = """
         </div>
     </div>
 
-    <!-- Call Screen (Vertical Split Half-Half Layout) -->
+    <!-- Call Screen (Vertical Split Half-Half Layout with Mute Option) -->
     <div id="video-container">
         <div class="video-box">
             <div class="video-header-bar">
                 <span id="call-status-title" style="color: #58a6ff; font-weight: bold; font-size: 0.9rem;">Secure Call Connected</span>
-                <button class="btn-call" style="background:#1f6feb; padding:6px 10px;" onclick="switchCamera()">🔄 Switch Camera</button>
+                <div style="display:flex; gap:5px;">
+                    <button class="btn-call" id="mute-mic-btn" style="background:#21262d; border:1px solid #30363d; padding:6px 10px;" onclick="toggleMicrophone()">🎙️ Mute Mic</button>
+                    <button class="btn-call" style="background:#1f6feb; padding:6px 10px;" onclick="switchCamera()">🔄 Camera</button>
+                </div>
             </div>
             <div class="video-split-container">
                 <div class="video-half" id="local-video-pane">
@@ -630,6 +633,7 @@ CHAT_HTML = """
         let lastSender = null;
         let isE2EEActive = localStorage.getItem('ghost_e2ee') === 'true';
         let currentFacingMode = 'user';
+        let isMicMuted = false;
         updateE2EEButtonUI();
         renderJoinedRooms();
 
@@ -758,11 +762,20 @@ CHAT_HTML = """
                 let displayTitle = currentRoom.startsWith("private_") ? "Direct Secure Chat" : currentRoom;
                 document.getElementById('room-title').innerText = "👻 " + displayTitle + ` (${data.active_users} online)`;
                 
-                // Room join hote hi server se pending messages mangwayenge
+                // Room join hote hi pending batch mangwayenge
                 socket.emit('fetch_pending_messages', { room: currentRoom, user: myUsername });
             } else {
                 alert(data.message || "Incorrect room password!");
                 document.getElementById('gate-error').innerText = data.message || "Incorrect room password!";
+            }
+        });
+
+        socket.on('receive_pending_batch', (data) => {
+            if (data.messages && data.messages.length > 0) {
+                data.messages.forEach(msgData => {
+                    appendMessageToScreen(msgData, false);
+                });
+                socket.emit('ack_pending_received', { room: currentRoom, user: myUsername });
             }
         });
 
@@ -875,11 +888,10 @@ CHAT_HTML = """
             }
         });
 
-        // Unique auto-delete timer tracker taaki multiple timers conflict na karein
         const activeTimers = {};
 
         function scheduleAutoDelete(msgId) {
-            if (activeTimers[msgId]) return; // Agar timer already chal raha hai toh dubara mat chalao
+            if (activeTimers[msgId]) return;
             activeTimers[msgId] = setTimeout(() => {
                 let card = document.getElementById('card_' + msgId);
                 if(card) {
@@ -887,7 +899,7 @@ CHAT_HTML = """
                     card.style.opacity = "0";
                     setTimeout(() => card.remove(), 500);
                 }
-            }, 60000); // Exact 1 Minute (60000ms) baad delete
+            }, 60000);
         }
 
         function appendMessageToScreen(data, isMine) {
@@ -902,8 +914,6 @@ CHAT_HTML = """
             lastSender = data.user;
             let userHTML = showUserHeading ? `<span class="user-id">${data.user}</span>` : '';
             let ticksHTML = isMine ? `<span id="tick_${data.id}" class="ticks">✓</span>` : '';
-            
-            // Sender ke paas hamesha Manual Delete button rahega
             let deleteBtnHTML = isMine ? `<button onclick="manualDeleteMessage('${data.id}')" style="background:none; border:none; color:#f85149; font-size:10px; cursor:pointer;" title="Delete for Everyone">🗑️ Delete</button>` : '';
 
             let contentHTML = "";
@@ -928,7 +938,6 @@ CHAT_HTML = """
             msgBox.appendChild(msgCard);
             msgBox.scrollTop = msgBox.scrollHeight;
 
-            // Agar message doosre ka hai, toh dekhte hi server ko seen ka signal bhejo aur 1 min ka timer chala do
             if(!isMine) {
                 socket.emit('message_seen', { room: currentRoom, password: roomPassword, id: data.id });
                 scheduleAutoDelete(data.id);
@@ -949,7 +958,6 @@ CHAT_HTML = """
             if(tickEl) { 
                 tickEl.innerText = "✓✓"; 
                 tickEl.className = "ticks seen"; 
-                // Sender ki screen par bhi message dekhne ke baad 1 minute ka timer shuru
                 scheduleAutoDelete(data.id);
             }
         });
@@ -968,6 +976,8 @@ CHAT_HTML = """
 
         async function startCall(type) {
             currentCallType = type;
+            isMicMuted = false;
+            updateMicButtonUI();
             document.getElementById('video-container').style.display = 'flex';
             const localVidEl = document.getElementById('localVideo');
             const remoteVidEl = document.getElementById('remoteVideo');
@@ -1007,6 +1017,26 @@ CHAT_HTML = """
             } catch (err) { alert("Microphone/Camera permission denied!"); endCall(); }
         }
 
+        function toggleMicrophone() {
+            if (!localStream) return;
+            isMicMuted = !isMicMuted;
+            localStream.getAudioTracks().forEach(track => {
+                track.enabled = !isMicMuted;
+            });
+            updateMicButtonUI();
+        }
+
+        function updateMicButtonUI() {
+            const btn = document.getElementById('mute-mic-btn');
+            if (isMicMuted) {
+                btn.style.background = "#da3633";
+                btn.innerText = "🔇 Unmute Mic";
+            } else {
+                btn.style.background = "#21262d";
+                btn.innerText = "🎙️ Mute Mic";
+            }
+        }
+
         async function switchCamera() {
             if (!localStream) return;
             currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
@@ -1027,6 +1057,8 @@ CHAT_HTML = """
 
         socket.on('offer', async (data) => {
             currentCallType = data.type;
+            isMicMuted = false;
+            updateMicButtonUI();
             document.getElementById('video-container').style.display = 'flex';
             const statusTitle = document.getElementById('call-status-title');
             const localVidEl = document.getElementById('localVideo');
@@ -1336,17 +1368,27 @@ def handle_fetch_pending(data):
     username = data.get('user')
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
-    # Safe evaluation of message JSON string stored in DB
     cursor.execute("SELECT id, data FROM pending_messages WHERE room = ? AND recipient = ?", (room, username))
     rows = cursor.fetchall()
+    pending_list = []
     for row in rows:
         msg_id, msg_str = row[0], row[1]
         try:
             import ast
             msg_json = ast.literal_eval(msg_str)
-            emit('receive_message', msg_json, to=request.sid)
+            pending_list.append(msg_json)
         except Exception as e:
             print("Error loading pending message:", e)
+    conn.close()
+    if pending_list:
+        emit('receive_pending_batch', {"messages": pending_list}, to=request.sid)
+
+@socketio.on('ack_pending_received')
+def handle_ack_pending(data):
+    room = data.get('room')
+    username = data.get('user')
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
     cursor.execute("DELETE FROM pending_messages WHERE room = ? AND recipient = ?", (room, username))
     conn.commit()
     conn.close()
@@ -1395,7 +1437,6 @@ def handle_message(data):
             ROOM_FILES[room].append(msg_data['content'])
         
         active_users_in_room = ROOM_USERS.get(room, [])
-        # Agar room mein partner online nahi hai (yaani sirf sender akela hai ya total users 1 hain), toh database mein pending save kar lo
         if len(active_users_in_room) <= 1:
             if room.startswith("private_"):
                 parts = room.split("_")
@@ -1427,7 +1468,6 @@ def handle_delete_for_everyone(data):
         cursor.execute("DELETE FROM pending_messages WHERE id = ?", (msg_id,))
         conn.commit()
         conn.close()
-        
         emit('remove_message_card', {"id": msg_id}, to=room)
 
 @socketio.on('typing')
