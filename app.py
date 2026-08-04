@@ -383,6 +383,11 @@ CHAT_HTML = """
         .lobby-box button { width: 100%; padding: 10px; background: #1f6feb; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 8px; }
         .lobby-box button:hover { background: #388bfd; }
 
+        .rooms-history { margin-top: 15px; text-align: left; }
+        .rooms-history h4 { font-size: 12px; color: #8b949e; margin-bottom: 8px; border-bottom: 1px solid #30363d; padding-bottom: 4px; }
+        .room-item { background: #21262d; padding: 8px 12px; margin-bottom: 6px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #30363d; font-size: 13px; cursor: pointer; }
+        .room-item:hover { border-color: #58a6ff; }
+
         /* Chat Screen */
         #chat-screen { display: none; width: 95%; max-width: 500px; height: 85vh; background: #161b22; border-radius: 12px; flex-direction: column; border: 1px solid #30363d; overflow: hidden; }
         .top-bar { background: #21262d; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; }
@@ -427,7 +432,15 @@ CHAT_HTML = """
             <button id="gate-btn" onclick="joinProtectedRoom()">Join / Create Room</button>
             <div id="gate-error" style="color: #f85149; font-size: 12px; margin-top: 6px;"></div>
 
-            <button onclick="instantLogout()" style="background: #da3633; margin-top: 20px;">🚪 Logout Portal</button>
+            <!-- Joined Rooms History List -->
+            <div class="rooms-history">
+                <h4>📂 Recently Joined Rooms</h4>
+                <div id="joined-rooms-list" style="max-height: 140px; overflow-y: auto;">
+                    <div style="color: #8b949e; font-size: 11px; text-align: center; padding: 5px;">No rooms joined yet</div>
+                </div>
+            </div>
+
+            <button onclick="instantLogout()" style="background: #da3633; margin-top: 15px;">🚪 Logout Portal</button>
         </div>
     </div>
 
@@ -510,6 +523,9 @@ CHAT_HTML = """
         let isE2EEActive = localStorage.getItem('ghost_e2ee') === 'true';
         updateE2EEButtonUI();
 
+        // Load saved rooms history on startup
+        renderJoinedRooms();
+
         async function initChat() {
             try {
                 let res = await fetch('/check-session', {cache: "no-store"});
@@ -522,6 +538,40 @@ CHAT_HTML = """
             } catch(e) { window.location.href = "/"; }
         }
         initChat();
+
+        function saveRoomToHistory(name, pass) {
+            let history = JSON.parse(localStorage.getItem('ghost_rooms_history') || '{}');
+            history[name] = pass; 
+            localStorage.setItem('ghost_rooms_history', JSON.stringify(history));
+            renderJoinedRooms();
+        }
+
+        function renderJoinedRooms() {
+            let historyListEl = document.getElementById('joined-rooms-list');
+            let history = JSON.parse(localStorage.getItem('ghost_rooms_history') || '{}');
+            let roomNames = Object.keys(history);
+
+            if(roomNames.length === 0) {
+                historyListEl.innerHTML = `<div style="color: #8b949e; font-size: 11px; text-align: center; padding: 5px;">No rooms joined yet</div>`;
+                return;
+            }
+
+            historyListEl.innerHTML = "";
+            roomNames.forEach(rName => {
+                historyListEl.innerHTML += `
+                    <div class="room-item" onclick="quickJoinRoom('${rName}', '${history[rName]}')">
+                        <span>👻 ${rName}</span>
+                        <span style="font-size:10px; color:#58a6ff;">Join ➔</span>
+                    </div>
+                `;
+            });
+        }
+
+        function quickJoinRoom(rName, rPass) {
+            document.getElementById("room-name-input").value = rName;
+            document.getElementById("room-pass-input").value = rPass;
+            joinProtectedRoom();
+        }
 
         function joinProtectedRoom() {
             const rName = document.getElementById("room-name-input").value.trim();
@@ -552,6 +602,7 @@ CHAT_HTML = """
             }
 
             if(data.status === "success") {
+                saveRoomToHistory(currentRoom, roomPassword); 
                 document.getElementById('room-lobby').style.display = 'none';
                 document.getElementById('chat-screen').style.display = 'flex';
                 document.getElementById('room-title').innerText = "👻 " + currentRoom + ` (${data.active_users} online)`;
@@ -568,6 +619,7 @@ CHAT_HTML = """
             document.getElementById('chat-screen').style.display = 'none';
             document.getElementById('room-lobby').style.display = 'flex';
             document.getElementById('messages').innerHTML = "";
+            renderJoinedRooms();
         }
 
         socket.on('room_users_update', (data) => {
