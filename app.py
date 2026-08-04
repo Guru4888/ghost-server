@@ -258,6 +258,15 @@ CHAT_HTML = """
         let isE2EEActive = localStorage.getItem('ghost_e2ee') === 'true';
         updateE2EEButtonUI();
 
+        // Auto logout / redirect to login if app is minimized or phone is locked
+        document.addEventListener("visibilitychange", function() {
+            if (document.hidden) {
+                fetch('/logout').then(() => {
+                    window.location.href = "/";
+                });
+            }
+        });
+
         async function initChat() {
             try {
                 let res = await fetch('/check-session');
