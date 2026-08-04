@@ -475,12 +475,15 @@ CHAT_HTML = """
         
         .chat-media { max-width: 100%; max-height: 200px; border-radius: 6px; margin-top: 4px; display: block; cursor: pointer; }
         
-        #video-container { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 1000; justify-content: center; align-items: center; flex-direction: column; }
-        .video-box { position: relative; width: 90%; max-width: 450px; background: #161b22; border-radius: 12px; padding: 15px; border: 1px solid #30363d; display: flex; flex-direction: column; align-items: center; }
-        .video-grid { display: flex; gap: 8px; width: 100%; justify-content: center; margin-bottom: 12px; flex-wrap: wrap; }
-        video { width: 48%; max-height: 220px; border-radius: 8px; background: black; object-fit: cover; }
-        #localVideo { display: block; }
-        .call-control-bar { display: flex; gap: 10px; width: 100%; justify-content: center; margin-top: 5px; }
+        /* Video Screen Half-Half Vertical Split Layout */
+        #video-container { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.98); z-index: 1000; flex-direction: column; }
+        .video-box { position: relative; width: 100%; height: 100%; display: flex; flex-direction: column; }
+        .video-header-bar { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: #161b22; border-bottom: 1px solid #30363d; z-index: 10; }
+        .video-split-container { display: flex; flex-direction: column; width: 100%; flex-grow: 1; height: calc(100vh - 60px); }
+        .video-half { width: 100%; height: 50%; position: relative; background: black; display: flex; justify-content: center; align-items: center; overflow: hidden; border-bottom: 1px solid #30363d; }
+        video { width: 100%; height: 100%; object-fit: cover; }
+        .video-label { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.6); color: white; padding: 3px 8px; font-size: 0.75rem; border-radius: 4px; z-index: 5; font-weight: bold; }
+        .call-control-bar { display: flex; gap: 10px; padding: 10px 15px; background: #161b22; justify-content: center; align-items: center; border-top: 1px solid #30363d; }
     </style>
 </head>
 <body>
@@ -505,13 +508,22 @@ CHAT_HTML = """
         </div>
     </div>
 
-    <!-- Call Screen -->
+    <!-- Call Screen (Vertical Split Half-Half Layout) -->
     <div id="video-container">
         <div class="video-box">
-            <h4 id="call-status-title" style="color: #58a6ff; margin: 0 0 10px 0; font-size: 1rem;">Secure Call Connected</h4>
-            <div class="video-grid">
-                <video id="localVideo" autoplay playsinline muted></video>
-                <video id="remoteVideo" autoplay playsinline></video>
+            <div class="video-header-bar">
+                <span id="call-status-title" style="color: #58a6ff; font-weight: bold; font-size: 0.9rem;">Secure Call Connected</span>
+                <button class="btn-call" style="background:#1f6feb; padding:6px 10px;" onclick="switchCamera()">🔄 Switch Camera</button>
+            </div>
+            <div class="video-split-container">
+                <div class="video-half" id="local-video-pane">
+                    <span class="video-label">👤 You (My Camera)</span>
+                    <video id="localVideo" autoplay playsinline muted></video>
+                </div>
+                <div class="video-half" id="remote-video-pane">
+                    <span class="video-label">👥 Partner</span>
+                    <video id="remoteVideo" autoplay playsinline></video>
+                </div>
             </div>
             <div class="call-control-bar">
                 <button class="btn-send" style="background:#da3633; width:100%;" onclick="endCall()">🔴 End Call</button>
@@ -576,6 +588,7 @@ CHAT_HTML = """
         let typingTimeout = null;
         let lastSender = null;
         let isE2EEActive = localStorage.getItem('ghost_e2ee') === 'true';
+        let currentFacingMode = 'user'; // 'user' for front, 'environment' for back
         updateE2EEButtonUI();
         renderJoinedRooms();
 
@@ -784,25 +797,28 @@ CHAT_HTML = """
         });
 
         let localStream, peerConnection;
+        let currentCallType = 'video';
         const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
 
         async function startCall(type) {
+            currentCallType = type;
             document.getElementById('video-container').style.display = 'flex';
             const localVidEl = document.getElementById('localVideo');
             const remoteVidEl = document.getElementById('remoteVideo');
             const statusTitle = document.getElementById('call-status-title');
+            const localPane = document.getElementById('local-video-pane');
 
             try {
                 if (type === 'video') {
                     statusTitle.innerText = "📹 Video Call Connected";
-                    localVidEl.style.display = 'block';
-                    remoteVidEl.style.display = 'block';
-                    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                    localPane.style.display = 'flex';
+                    localStream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { facingMode: currentFacingMode }, 
+                        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } 
+                    });
                 } else {
                     statusTitle.innerText = "📞 Audio Call Connected";
-                    localVidEl.style.display = 'none';
-                    remoteVidEl.style.display = 'none';
-                    // Force audio output to earpiece using audio constraints configuration
+                    localPane.style.display = 'none'; // Audio call me sirf remote/partner ki audio sunai degi
                     localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
                 }
 
@@ -812,10 +828,7 @@ CHAT_HTML = """
                 
                 peerConnection.ontrack = e => {
                     remoteVidEl.srcObject = e.streams[0];
-                    // Also handle audio element routing fallback for mobile earpiece
-                    if(type === 'audio') {
-                        remoteVidEl.play().catch(() => {});
-                    }
+                    remoteVidEl.play().catch(() => {});
                 };
 
                 peerConnection.onicecandidate = e => { 
@@ -828,28 +841,54 @@ CHAT_HTML = """
             } catch (err) { alert("Microphone/Camera permission denied!"); endCall(); }
         }
 
+        async function switchCamera() {
+            if (!localStream) return;
+            currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
+            const tracks = localStream.getVideoTracks();
+            if (tracks.length > 0) {
+                tracks[0].stop();
+            }
+            try {
+                let newStream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: currentFacingMode },
+                    audio: true
+                });
+                let videoTrack = newStream.getVideoTracks()[0];
+                let sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                if (sender) {
+                    sender.replaceTrack(videoTrack);
+                }
+                localStream = newStream;
+                document.getElementById('localVideo').srcObject = localStream;
+            } catch(e) {
+                alert("Could not switch camera!");
+            }
+        }
+
         socket.on('offer', async (data) => {
+            currentCallType = data.type;
             document.getElementById('video-container').style.display = 'flex';
             const statusTitle = document.getElementById('call-status-title');
             const localVidEl = document.getElementById('localVideo');
             const remoteVidEl = document.getElementById('remoteVideo');
+            const localPane = document.getElementById('local-video-pane');
             
             statusTitle.innerText = data.type === 'video' ? "📹 Video Call Connected" : "📞 Audio Call Connected";
-            localVidEl.style.display = data.type === 'video' ? 'block' : 'none';
-            remoteVidEl.style.display = data.type === 'video' ? 'block' : 'none';
+            localPane.style.display = (data.type === 'video') ? 'flex' : 'none';
 
             peerConnection = new RTCPeerConnection(servers);
             try {
-                localStream = await navigator.mediaDevices.getUserMedia({ video: data.type === 'video', audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+                localStream = await navigator.mediaDevices.getUserMedia({ 
+                    video: data.type === 'video' ? { facingMode: currentFacingMode } : false, 
+                    audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } 
+                });
                 localVidEl.srcObject = localStream;
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
             } catch(e){}
 
             peerConnection.ontrack = e => {
                 remoteVidEl.srcObject = e.streams[0];
-                if(data.type === 'audio') {
-                    remoteVidEl.play().catch(() => {});
-                }
+                remoteVidEl.play().catch(() => {});
             };
 
             peerConnection.onicecandidate = e => { 
