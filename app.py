@@ -1,7 +1,8 @@
 from flask import Flask, request, redirect, url_for, session, jsonify
-from flask_socketio import SocketIO, emit, join_room
+from flask_socketio import SocketIO, emit, join_room, leave_room
 import os
 import sqlite3
+import datetime
 
 app = Flask(__name__)
 app.secret_key = "ghost_super_secret_key_multi_user_998877"
@@ -14,7 +15,10 @@ def init_db():
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY,
-            password TEXT NOT NULL
+            password TEXT NOT NULL,
+            sec_question TEXT,
+            sec_answer TEXT,
+            last_seen TEXT
         )
     ''')
     cursor.execute('''
@@ -24,7 +28,8 @@ def init_db():
     ''')
     cursor.execute("SELECT * FROM users WHERE username = 'admin'")
     if not cursor.fetchone():
-        cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", ("admin", "guru&guru16230"))
+        cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
+                       ("admin", "guru&guru16230", "Master Key", "guru", "Never"))
     conn.commit()
     conn.close()
 
@@ -48,18 +53,18 @@ LOGIN_HTML = """
     <title>System Access Portal</title>
     <style>
         body { background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; user-select: none; }
-        .portal-box { background: #161b22; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 320px; text-align: center; border: 1px solid #30363d; }
-        .portal-box input { width: 100%; padding: 12px; margin: 8px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
+        .portal-box { background: #161b22; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 330px; text-align: center; border: 1px solid #30363d; }
+        .portal-box input, .portal-box select { width: 100%; padding: 10px; margin: 6px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
         .secure-pass { -webkit-text-security: disc; text-security: disc; }
-        .portal-box button { width: 100%; padding: 12px; background: #238636; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .portal-box button { width: 100%; padding: 10px; background: #238636; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 8px; }
         .portal-box button:hover { background: #2ea043; }
-        .tab-btn { background: #21262d; color: #8b949e; border: 1px solid #30363d; padding: 8px 12px; cursor: pointer; border-radius: 6px; font-weight: bold; width: 48%; }
+        .tab-btn { background: #21262d; color: #8b949e; border: 1px solid #30363d; padding: 8px 6px; cursor: pointer; border-radius: 6px; font-weight: bold; width: 31%; font-size: 11px; }
         .tab-btn.active { background: #1f6feb; color: white; border-color: #1f6feb; }
         .tabs { display: flex; justify-content: space-between; margin-bottom: 15px; }
         .form-section { display: none; }
         .form-section.active { display: block; }
-        .error-msg { color: #f85149; font-size: 13px; margin-top: 5px; }
-        .success-msg { color: #3fb950; font-size: 13px; margin-top: 5px; }
+        .error-msg { color: #f85149; font-size: 12px; margin-top: 5px; }
+        .success-msg { color: #3fb950; font-size: 12px; margin-top: 5px; }
     </style>
 </head>
 <body>
@@ -68,6 +73,7 @@ LOGIN_HTML = """
         <div class="tabs">
             <button class="tab-btn active" onclick="switchTab('login', event)">Login</button>
             <button class="tab-btn" onclick="switchTab('register', event)">Register</button>
+            <button class="tab-btn" onclick="switchTab('forgot', event)">Forgot?</button>
         </div>
 
         <div id="login-form" class="form-section active">
@@ -80,8 +86,23 @@ LOGIN_HTML = """
         <div id="register-form" class="form-section">
             <input type="text" id="reg-user" placeholder="Choose Username" autocomplete="off">
             <input type="text" id="reg-pass" placeholder="Choose Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
+            <select id="reg-q">
+                <option value="What is your pet name?">What is your pet name?</option>
+                <option value="What was your first school?">What was your first school?</option>
+                <option value="What is your favorite food?">What is your favorite food?</option>
+            </select>
+            <input type="text" id="reg-ans" placeholder="Security Answer (for reset)" autocomplete="off">
             <button onclick="registerUser()">Create Account</button>
             <div id="regMsg" class="error-msg"></div>
+        </div>
+
+        <div id="forgot-form" class="form-section">
+            <input type="text" id="forgot-user" placeholder="Enter Username" autocomplete="off" onblur="fetchSecQuestion()">
+            <div id="q-display" style="color: #58a6ff; font-size: 11px; margin: 4px 0; text-align: left;"></div>
+            <input type="text" id="forgot-ans" placeholder="Security Answer" autocomplete="off">
+            <input type="text" id="forgot-new-pass" placeholder="New Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
+            <button onclick="resetPassword()" style="background: #d29922; color: #0d1117;">Verify & Reset</button>
+            <div id="forgotMsg" class="error-msg"></div>
         </div>
     </div>
 
@@ -92,9 +113,24 @@ LOGIN_HTML = """
             if(tab === 'login') {
                 document.getElementById('login-form').classList.add('active');
                 event.target.classList.add('active');
-            } else {
+            } else if(tab === 'register') {
                 document.getElementById('register-form').classList.add('active');
                 event.target.classList.add('active');
+            } else {
+                document.getElementById('forgot-form').classList.add('active');
+                event.target.classList.add('active');
+            }
+        }
+
+        async function fetchSecQuestion() {
+            const user = document.getElementById("forgot-user").value.trim();
+            if(!user) return;
+            let res = await fetch('/get-question?username=' + encodeURIComponent(user));
+            let data = await res.json();
+            if(res.ok) {
+                document.getElementById("q-display").innerText = "Question: " + data.question;
+            } else {
+                document.getElementById("q-display").innerText = "User not found!";
             }
         }
 
@@ -117,20 +153,43 @@ LOGIN_HTML = """
         async function registerUser() {
             const user = document.getElementById("reg-user").value.trim();
             const pass = document.getElementById("reg-pass").value.trim();
+            const q = document.getElementById("reg-q").value;
+            const ans = document.getElementById("reg-ans").value.trim();
             let response = await fetch('/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: user, password: pass })
+                body: JSON.stringify({ username: user, password: pass, question: q, answer: ans })
             });
             let result = await response.json();
             let msgEl = document.getElementById("regMsg");
             if (response.ok && result.status === "success") {
                 msgEl.className = "success-msg";
                 msgEl.innerText = "Account created! You can now login.";
-                setTimeout(() => switchTab('login', {target: document.querySelector('.tab-btn')}), 1500);
+                setTimeout(() => switchTab('login', {target: document.querySelectorAll('.tab-btn')[0]}), 1500);
             } else {
                 msgEl.className = "error-msg";
                 msgEl.innerText = result.message || "Registration failed!";
+            }
+        }
+
+        async function resetPassword() {
+            const user = document.getElementById("forgot-user").value.trim();
+            const ans = document.getElementById("forgot-ans").value.trim();
+            const pass = document.getElementById("forgot-new-pass").value.trim();
+            let response = await fetch('/reset-password', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: user, answer: ans, new_password: pass })
+            });
+            let result = await response.json();
+            let msgEl = document.getElementById("forgotMsg");
+            if (response.ok && result.status === "success") {
+                msgEl.className = "success-msg";
+                msgEl.innerText = "Password updated! You can now login.";
+                setTimeout(() => switchTab('login', {target: document.querySelectorAll('.tab-btn')[0]}), 1500);
+            } else {
+                msgEl.className = "error-msg";
+                msgEl.innerText = result.message || "Reset failed!";
             }
         }
     </script>
@@ -169,7 +228,7 @@ ADMIN_HTML = """
         <div class="section-title" style="color: #f85149;">🚫 Blocked Users List</div>
         <ul id="blocked-list"></ul>
 
-        <a href="/chat" class="back-link">⬅ Back to Chat</a>
+        <a href="/chat" class="back-link">⬅ Back to Lobby</a>
         <a href="/logout" class="back-link" style="color: #f85149;">Logout</a>
     </div>
 
@@ -261,20 +320,31 @@ CHAT_HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ghost Secret Tunnel</title>
+    <title>Ghost Secret Tunnel - Lobby</title>
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         * { box-sizing: border-box; }
         body { background-color: #0d1117; color: #ffffff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; user-select: none; }
         #security-warning { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 9999; justify-content: center; align-items: center; color: #f85149; font-size: 1.5rem; font-weight: bold; text-align: center; padding: 20px; }
         
-        #room-gate { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0d1117; z-index: 999; display: flex; justify-content: center; align-items: center; }
-        .gate-box { background: #161b22; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 320px; text-align: center; border: 1px solid #30363d; }
-        .gate-box input { width: 100%; padding: 12px; margin: 8px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
+        /* Room Lobby Section */
+        #room-lobby { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0d1117; z-index: 999; display: flex; justify-content: center; align-items: center; }
+        .lobby-box { background: #161b22; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 380px; text-align: center; border: 1px solid #30363d; max-height: 90vh; overflow-y: auto; }
+        .lobby-box input { width: 100%; padding: 10px; margin: 6px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
         .secure-pass { -webkit-text-security: disc; text-security: disc; }
-        .gate-box button { width: 100%; padding: 12px; background: #1f6feb; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 10px; }
-        .gate-box button:hover { background: #388bfd; }
+        .lobby-box button { width: 100%; padding: 10px; background: #1f6feb; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 8px; }
+        .lobby-box button:hover { background: #388bfd; }
+        
+        .room-list { list-style: none; padding: 0; margin-top: 15px; text-align: left; max-height: 140px; overflow-y: auto; }
+        .room-item { background: #21262d; padding: 10px; margin-bottom: 6px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #30363d; font-size: 13px; }
+        .room-item button { width: auto; padding: 5px 10px; margin: 0; background: #238636; font-size: 11px; }
 
+        .users-panel { margin-top: 15px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 10px; text-align: left; max-height: 120px; overflow-y: auto; }
+        .user-status-item { font-size: 11px; margin-bottom: 4px; display: flex; justify-content: space-between; }
+        .online-dot { color: #3fb950; font-weight: bold; }
+        .offline-txt { color: #8b949e; }
+
+        /* Chat Screen */
         #chat-screen { display: none; width: 95%; max-width: 500px; height: 85vh; background: #161b22; border-radius: 12px; flex-direction: column; border: 1px solid #30363d; overflow: hidden; }
         .top-bar { background: #21262d; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; }
         .top-bar h3 { margin: 0; font-size: 0.9rem; color: #58a6ff; }
@@ -307,14 +377,28 @@ CHAT_HTML = """
 <body>
     <div id="security-warning">⚠️ Screen Recording / Capture Detected!<br>Access Restricted for Security.</div>
 
-    <div id="room-gate">
-        <div class="gate-box">
-            <h3>🔐 Enter Secret Room</h3>
-            <p style="color: #8b949e; font-size: 11px; margin-bottom: 10px;">Provide room name & password to enter.</p>
-            <input type="text" id="room-name-input" placeholder="Room Name" autocomplete="off">
+    <!-- Room Lobby Dashboard -->
+    <div id="room-lobby">
+        <div class="lobby-box">
+            <h3>🌐 Chat Lobby</h3>
+            <p style="color: #8b949e; font-size: 11px; margin-bottom: 10px;">Select a room or create a new one.</p>
+            
+            <input type="text" id="room-name-input" placeholder="New Room Name" autocomplete="off">
             <input type="text" id="room-pass-input" placeholder="Room Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
-            <button id="gate-btn" onclick="joinProtectedRoom()">Enter Room</button>
-            <div id="gate-error" style="color: #f85149; font-size: 12px; margin-top: 8px;"></div>
+            <button id="gate-btn" onclick="joinProtectedRoom()">Create / Enter Room</button>
+            <div id="gate-error" style="color: #f85149; font-size: 12px; margin-top: 6px;"></div>
+
+            <div style="margin-top: 12px; font-size: 12px; color: #58a6ff; font-weight: bold; text-align: left;">Active Rooms:</div>
+            <ul id="rooms-list-container" class="room-list">
+                <li style="text-align: center; color: #8b949e; font-size: 12px;">Loading rooms...</li>
+            </ul>
+
+            <div style="margin-top: 10px; font-size: 12px; color: #58a6ff; font-weight: bold; text-align: left;">All Portal Users Status:</div>
+            <div id="all-users-status" class="users-panel">
+                <div style="color: #8b949e; font-size: 11px; text-align: center;">Loading users...</div>
+            </div>
+
+            <button onclick="instantLogout()" style="background: #da3633; margin-top: 15px;">🚪 Logout Portal</button>
         </div>
     </div>
 
@@ -335,7 +419,7 @@ CHAT_HTML = """
                 <button class="btn-call btn-audio" onclick="startCall('audio')">📞</button>
                 <button class="btn-call btn-video" onclick="startCall('video')">📹</button>
                 <button id="admin-panel-btn" class="btn-call btn-admin" onclick="window.location.href='/admin-panel-guru'">🛡️</button>
-                <button class="btn-call btn-logout-manual" onclick="instantLogout()">🚪 Logout</button>
+                <button class="btn-call btn-logout-manual" onclick="returnToLobby()">🔙 Lobby</button>
             </div>
         </div>
         <div id="messages"></div>
@@ -405,10 +489,47 @@ CHAT_HTML = """
                     if(data.is_blocked || data.is_deleted) { instantLogout(); return; }
                     myUsername = data.username;
                     if(data.is_admin) { document.getElementById('admin-panel-btn').style.display = 'inline-block'; }
+                    socket.emit('get_lobby_data');
                 } else { window.location.href = "/"; }
             } catch(e) { window.location.href = "/"; }
         }
         initChat();
+
+        socket.on('update_lobby_info', (data) => {
+            const listEl = document.getElementById('rooms-list-container');
+            listEl.innerHTML = "";
+            if(data.rooms.length === 0) {
+                listEl.innerHTML = `<li style="text-align: center; color: #8b949e; font-size: 12px;">No active rooms found</li>`;
+            } else {
+                data.rooms.forEach(r => {
+                    listEl.innerHTML += `
+                        <li class="room-item">
+                            <span>👻 <b>${r.name}</b> (${r.users_count} online)</span>
+                            <button onclick="quickJoin('${r.name}')">Enter</button>
+                        </li>`;
+                });
+            }
+
+            const usersPanel = document.getElementById('all-users-status');
+            usersPanel.innerHTML = "";
+            data.users_status.forEach(u => {
+                let statusHtml = u.online ? `<span class="online-dot">● Online</span>` : `<span class="offline-txt">Last seen: ${u.last_seen}</span>`;
+                usersPanel.innerHTML += `
+                    <div class="user-status-item">
+                        <span>👤 ${u.username}</span>
+                        <span>${statusHtml}</span>
+                    </div>`;
+            });
+        });
+
+        function quickJoin(roomName) {
+            let pass = prompt("Enter password for room " + roomName + ":");
+            if(pass !== null) {
+                currentRoom = roomName;
+                roomPassword = pass.trim();
+                socket.emit('verify_and_join', { room: currentRoom, password: roomPassword, user: myUsername });
+            }
+        }
 
         function joinProtectedRoom() {
             const rName = document.getElementById("room-name-input").value.trim();
@@ -433,15 +554,35 @@ CHAT_HTML = """
 
         socket.on('room_join_response', (data) => {
             const btnEl = document.getElementById("gate-btn");
-            btnEl.innerText = "Enter Room";
-            btnEl.disabled = false;
+            if(btnEl) {
+                btnEl.innerText = "Create / Enter Room";
+                btnEl.disabled = false;
+            }
 
             if(data.status === "success") {
-                document.getElementById('room-gate').style.display = 'none';
+                document.getElementById('room-lobby').style.display = 'none';
                 document.getElementById('chat-screen').style.display = 'flex';
-                document.getElementById('room-title').innerText = "👻 " + currentRoom;
+                document.getElementById('room-title').innerText = "👻 " + currentRoom + ` (${data.active_users} online)`;
             } else {
+                alert(data.message || "Incorrect room password!");
                 document.getElementById('gate-error').innerText = data.message || "Incorrect room password!";
+            }
+        });
+
+        function returnToLobby() {
+            socket.emit('leave_current_room', { room: currentRoom, user: myUsername });
+            currentRoom = "";
+            roomPassword = "";
+            document.getElementById('chat-screen').style.display = 'none';
+            document.getElementById('room-lobby').style.display = 'flex';
+            document.getElementById('messages').innerHTML = "";
+            socket.emit('get_lobby_data');
+        }
+
+        socket.on('room_users_update', (data) => {
+            if(data.room === currentRoom) {
+                document.getElementById('room-title').innerText = "👻 " + currentRoom + ` (${data.active_users} online)`;
+                document.getElementById('display-status').innerText = `● Connected (${data.users.join(', ')})`;
             }
         });
 
@@ -602,6 +743,8 @@ CHAT_HTML = """
 """
 
 ROOM_PASSWORDS = {"secret_tunnel_999": "guru123"}
+ROOM_USERS = {}
+ONLINE_USERS = set()
 
 @app.route('/')
 def home():
@@ -610,14 +753,25 @@ def home():
 
 @app.route('/logout')
 def logout():
+    u = session.get('user')
+    if u:
+        ONLINE_USERS.discard(u)
+        now_str = datetime.datetime.now().strftime("%I:%M %p")
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET last_seen = ? WHERE username = ?", (now_str, u))
+        conn.commit()
+        conn.close()
     session.clear()
+    broadcast_lobby()
     return redirect(url_for('home'))
 
 @app.route('/register', methods=['POST'])
 def register():
     data = request.json
     u, p = data.get('username', '').strip(), data.get('password', '').strip()
-    if not u or not p: return jsonify({"status": "error"}), 400
+    q, a = data.get('question', '').strip(), data.get('answer', '').strip()
+    if not u or not p or not a: return jsonify({"status": "error", "message": "All fields required!"}), 400
     
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
@@ -626,7 +780,45 @@ def register():
         conn.close()
         return jsonify({"status": "error", "message": "Username already exists!"}), 400
     
-    cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (u, p))
+    cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
+                   (u, p, q, a, "Never"))
+    conn.commit()
+    conn.close()
+    return jsonify({"status": "success"})
+
+@app.route('/get-question')
+def get_question():
+    u = request.args.get('username', '').strip()
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT sec_question FROM users WHERE username = ?", (u,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return jsonify({"question": row[0]})
+    return jsonify({"error": "User not found"}), 404
+
+@app.route('/reset-password', methods=['POST'])
+def reset_password():
+    data = request.json
+    u = data.get('username', '').strip()
+    ans = data.get('answer', '').strip()
+    p = data.get('new_password', '').strip()
+    if not u or not ans or not p: return jsonify({"status": "error", "message": "All fields required!"}), 400
+    
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT sec_answer FROM users WHERE username = ?", (u,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"status": "error", "message": "Username not found!"}), 404
+        
+    if row[0].lower() != ans.lower():
+        conn.close()
+        return jsonify({"status": "error", "message": "Incorrect Security Answer!"}), 401
+        
+    cursor.execute("UPDATE users SET password = ? WHERE username = ?", (p, u))
     conn.commit()
     conn.close()
     return jsonify({"status": "success"})
@@ -651,6 +843,8 @@ def login():
         session['authenticated'] = True
         session['user'] = u
         session['is_admin'] = (u == "admin")
+        ONLINE_USERS.add(u)
+        broadcast_lobby()
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "Invalid username or password!"}), 401
 
@@ -668,6 +862,9 @@ def check_session():
     cursor.execute("SELECT * FROM users WHERE username = ?", (user,))
     is_deleted = cursor.fetchone() is None
     conn.close()
+    
+    if session.get('authenticated') and not is_blocked and not is_deleted:
+        ONLINE_USERS.add(user)
     
     return jsonify({
         "authenticated": session.get('authenticated', False) and not is_blocked and not is_deleted,
@@ -699,11 +896,13 @@ def block_user():
     if not session.get('is_admin', False): return jsonify({}), 403
     u = request.json.get('username')
     if u and u != "admin":
+        ONLINE_USERS.discard(u)
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         cursor.execute("INSERT OR IGNORE INTO blocked (username) VALUES (?)", (u,))
         conn.commit()
         conn.close()
+        broadcast_lobby()
     return jsonify({"status": "success"})
 
 @app.route('/unblock-user', methods=['POST'])
@@ -723,12 +922,14 @@ def delete_user():
     if not session.get('is_admin', False): return jsonify({}), 403
     u = request.json.get('username')
     if u and u != "admin":
+        ONLINE_USERS.discard(u)
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         cursor.execute("DELETE FROM users WHERE username = ?", (u,))
         cursor.execute("DELETE FROM blocked WHERE username = ?", (u,))
         conn.commit()
         conn.close()
+        broadcast_lobby()
     return jsonify({"status": "success"})
 
 @app.route('/chat')
@@ -748,19 +949,74 @@ def chat():
         return redirect(url_for('home'))
     return CHAT_HTML
 
+def broadcast_lobby():
+    rooms_data = []
+    for r_name, users_list in ROOM_USERS.items():
+        if users_list:
+            rooms_data.append({"name": r_name, "users_count": len(users_list)})
+            
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT username, last_seen FROM users")
+    rows = cursor.fetchall()
+    conn.close()
+    
+    users_status = []
+    for r in rows:
+        uname = r[0]
+        last_s = r[1]
+        is_on = uname in ONLINE_USERS
+        users_status.append({"username": uname, "online": is_on, "last_seen": last_s})
+        
+    socketio.emit('update_lobby_info', {"rooms": rooms_data, "users_status": users_status})
+
+@socketio.on('get_lobby_data')
+def handle_get_lobby():
+    broadcast_lobby()
+
 @socketio.on('verify_and_join')
 def handle_room_verification(data):
     room = data.get('room')
     password = data.get('password')
+    username = data.get('user', 'User')
     
     if room not in ROOM_PASSWORDS:
         ROOM_PASSWORDS[room] = password
         
     if ROOM_PASSWORDS.get(room) == password:
         join_room(room)
-        emit('room_join_response', {"status": "success"})
+        
+        if room not in ROOM_USERS:
+            ROOM_USERS[room] = []
+        if username not in ROOM_USERS[room]:
+            ROOM_USERS[room].append(username)
+            
+        emit('room_join_response', {
+            "status": "success", 
+            "active_users": len(ROOM_USERS[room])
+        })
+        emit('room_users_update', {
+            "room": room, 
+            "active_users": len(ROOM_USERS[room]), 
+            "users": ROOM_USERS[room]
+        }, to=room)
+        broadcast_lobby()
     else:
         emit('room_join_response', {"status": "error", "message": "Incorrect room password!"})
+
+@socketio.on('leave_current_room')
+def handle_leave_room(data):
+    room = data.get('room')
+    username = data.get('user')
+    if room in ROOM_USERS and username in ROOM_USERS[room]:
+        ROOM_USERS[room].remove(username)
+        leave_room(room)
+        emit('room_users_update', {
+            "room": room, 
+            "active_users": len(ROOM_USERS[room]), 
+            "users": ROOM_USERS[room]
+        }, to=room)
+        broadcast_lobby()
 
 @socketio.on('send_message')
 def handle_message(data):
