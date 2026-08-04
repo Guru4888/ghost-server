@@ -52,15 +52,15 @@ LOGIN_HTML = """
         </div>
 
         <div id="login-form" class="form-section active">
-            <input type="text" id="login-user" placeholder="Username" autocomplete="off">
-            <input type="password" id="login-pass" placeholder="Password" autocomplete="new-password">
+            <input type="text" id="login-user" placeholder="Username" autocomplete="off" readonly onfocus="this.removeAttribute('readonly');">
+            <input type="password" id="login-pass" placeholder="Password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly');">
             <button onclick="loginUser()">Login to Chat</button>
             <div id="loginError" class="error-msg"></div>
         </div>
 
         <div id="register-form" class="form-section">
-            <input type="text" id="reg-user" placeholder="Choose Username" autocomplete="off">
-            <input type="password" id="reg-pass" placeholder="Choose Password" autocomplete="new-password">
+            <input type="text" id="reg-user" placeholder="Choose Username" autocomplete="off" readonly onfocus="this.removeAttribute('readonly');">
+            <input type="password" id="reg-pass" placeholder="Choose Password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly');">
             <button onclick="registerUser()">Create Account</button>
             <div id="regMsg" class="error-msg"></div>
         </div>
@@ -246,7 +246,9 @@ CHAT_HTML = """
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         * { box-sizing: border-box; }
-        body { background-color: #0d1117; color: #ffffff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; user-select: none; }
+        body { background-color: #0d1117; color: #ffffff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; user-select: none; transition: filter 0.3s ease; }
+        .blur-screen { filter: blur(20px); pointer-events: none; }
+        #security-warning { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 9999; justify-content: center; align-items: center; color: #f85149; font-size: 1.5rem; font-weight: bold; text-align: center; padding: 20px; }
         #room-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: flex; justify-content: center; align-items: center; z-index: 999; }
         .modal-box { background: #161b22; padding: 25px; border-radius: 12px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.7); border: 1px solid #30363d; width: 90%; max-width: 400px; }
         #chat-screen { display: flex; width: 95%; max-width: 500px; height: 85vh; background: #161b22; border-radius: 12px; flex-direction: column; border: 1px solid #30363d; overflow: hidden; }
@@ -278,11 +280,13 @@ CHAT_HTML = """
     </style>
 </head>
 <body>
+    <div id="security-warning">⚠️ Screen Recording / Capture Detected!<br>Access Restricted for Security.</div>
+
     <div id="room-modal">
         <div class="modal-box">
             <h2>🔑 Join Chat Room</h2>
-            <input type="text" id="room-name" placeholder="Room Name" autocomplete="off" style="margin-bottom:10px;">
-            <input type="password" id="room-pass" placeholder="Room Password" autocomplete="new-password" style="margin-bottom:10px;">
+            <input type="text" id="room-name" placeholder="Room Name" autocomplete="off" readonly onfocus="this.removeAttribute('readonly');" style="margin-bottom:10px;">
+            <input type="password" id="room-pass" placeholder="Room Password" autocomplete="new-password" readonly onfocus="this.removeAttribute('readonly');" style="margin-bottom:10px;">
             <button class="btn-send" style="width: 100%;" onclick="joinReservedRoom()">Enter Room</button>
         </div>
     </div>
@@ -310,13 +314,41 @@ CHAT_HTML = """
         <div class="input-box">
             <div id="typing-indicator"></div>
             <div class="input-row">
-                <input type="text" id="msg-input" placeholder="Type a message..." autocomplete="off" oninput="notifyTyping()" onkeypress="if(event.key==='Enter') sendMessage()">
+                <input type="text" id="msg-input" placeholder="Type a message..." autocomplete="off" readonly onfocus="this.removeAttribute('readonly');" oninput="notifyTyping()" onkeypress="if(event.key==='Enter') sendMessage()">
                 <button class="btn-send" onclick="sendMessage()">Send</button>
             </div>
         </div>
     </div>
 
     <script>
+        // Anti-Screen Recording & Capture Detection
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'PrintScreen') {
+                triggerSecurityAlert();
+            }
+        });
+
+        if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
+            const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia;
+            navigator.mediaDevices.getDisplayMedia = function(constraints) {
+                triggerSecurityAlert();
+                return originalGetDisplayMedia.call(navigator.mediaDevices, constraints);
+            };
+        }
+
+        document.addEventListener("visibilitychange", () => {
+            if (document.hidden) {
+                document.body.classList.add('blur-screen');
+            } else {
+                document.body.classList.remove('blur-screen');
+            }
+        });
+
+        function triggerSecurityAlert() {
+            document.getElementById('security-warning').style.display = 'flex';
+            document.body.classList.add('blur-screen');
+        }
+
         const socket = io();
         let currentRoom = "";
         let myUsername = "User";
