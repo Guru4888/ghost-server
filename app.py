@@ -219,11 +219,16 @@ ADMIN_HTML = """
         .section-title { font-size: 13px; color: #58a6ff; margin-bottom: 5px; font-weight: bold; }
         #monitor-section { margin-top: 10px; background: #010409; border: 1px solid #30363d; border-radius: 6px; padding: 10px; display: none; }
         #monitor-messages { height: 120px; overflow-y: auto; background: #0d1117; padding: 8px; border-radius: 4px; font-size: 12px; margin-top: 8px; }
+        .header-info { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; padding-bottom: 10px; margin-bottom: 15px; }
+        .user-tag { background: #21262d; padding: 4px 8px; border-radius: 4px; font-size: 12px; color: #3fb950; border: 1px solid #30363d; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="admin-box">
-        <h2>🛡️ Admin Control Panel</h2>
+        <div class="header-info">
+            <h2>🛡️ Admin Panel</h2>
+            <div id="current-user-tag" class="user-tag">👤 Loading...</div>
+        </div>
         <p style="color: #8b949e; font-size: 12px; margin-bottom: 15px;">Total Users: <b id="total-count" style="color:white;">0</b></p>
         
         <div class="section-title">👥 Active Registered Users</div>
@@ -251,9 +256,9 @@ ADMIN_HTML = """
             <div id="monitor-messages"></div>
         </div>
 
-        <div style="margin-top: 15px;">
-            <a href="/chat" class="back-link">⬅ Back to Lobby</a>
-            <a href="/logout" class="back-link" style="color: #f85149;">Logout</a>
+        <div style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center;">
+            <a href="/chat" class="back-link" style="margin-top:0;">⬅ Back to Lobby</a>
+            <a href="/logout" class="back-link" style="color: #f85149; margin-top:0;">🚪 Logout</a>
         </div>
     </div>
 
@@ -261,6 +266,17 @@ ADMIN_HTML = """
     <script>
         const socket = io({ transports: ['polling', 'websocket'] });
         let spyingRoom = null;
+
+        async function fetchUserInfo() {
+            try {
+                let res = await fetch('/check-session', {cache: "no-store"});
+                let data = await res.json();
+                if(data.authenticated) {
+                    document.getElementById('current-user-tag').innerText = "👤 " + data.username;
+                }
+            } catch(e) {}
+        }
+        fetchUserInfo();
 
         async function fetchDashboard() {
             try {
@@ -408,6 +424,8 @@ CHAT_HTML = """
         
         #room-lobby { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0d1117; z-index: 999; display: flex; justify-content: center; align-items: center; }
         .lobby-box { background: #161b22; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 380px; text-align: center; border: 1px solid #30363d; max-height: 90vh; overflow-y: auto; }
+        .lobby-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #30363d; padding-bottom: 8px; }
+        .lobby-user-tag { font-size: 11px; color: #3fb950; font-weight: bold; background: #21262d; padding: 3px 6px; border-radius: 4px; border: 1px solid #30363d; }
         .lobby-box input { width: 100%; padding: 10px; margin: 6px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
         .secure-pass { -webkit-text-security: disc; text-security: disc; }
         .lobby-box button { width: 100%; padding: 10px; background: #1f6feb; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 8px; }
@@ -452,7 +470,10 @@ CHAT_HTML = """
 
     <div id="room-lobby">
         <div class="lobby-box">
-            <h3>🌐 Room Gateway</h3>
+            <div class="lobby-header">
+                <h3 style="margin:0; font-size: 15px;">🌐 Room Gateway</h3>
+                <div id="lobby-user-tag" class="lobby-user-tag">👤 Loading...</div>
+            </div>
             <p style="color: #8b949e; font-size: 11px; margin-bottom: 10px;">Enter room details to create or join.</p>
             
             <input type="text" id="room-name-input" placeholder="Room Name" autocomplete="off">
@@ -488,7 +509,8 @@ CHAT_HTML = """
                 <button class="btn-call btn-audio" onclick="startCall('audio')">📞</button>
                 <button class="btn-call btn-video" onclick="startCall('video')">📹</button>
                 <button id="admin-panel-btn" class="btn-call btn-admin" onclick="window.location.href='/admin-panel-guru'">🛡️</button>
-                <button class="btn-call btn-logout-manual" onclick="returnToLobby()">🔙 Lobby</button>
+                <button class="btn-call btn-logout-manual" onclick="returnToLobby()" title="Back to Lobby">⬅ Lobby</button>
+                <button class="btn-call btn-logout-manual" onclick="instantLogout()" title="Logout">🚪</button>
             </div>
         </div>
         <div id="messages"></div>
@@ -554,6 +576,7 @@ CHAT_HTML = """
                 if(data.authenticated) {
                     if(data.is_blocked || data.is_deleted) { instantLogout(); return; }
                     myUsername = data.username;
+                    document.getElementById('lobby-user-tag').innerText = "👤 " + myUsername;
                     if(data.is_admin) { document.getElementById('admin-panel-btn').style.display = 'inline-block'; }
                 } else { window.location.href = "/"; }
             } catch(e) { window.location.href = "/"; }
