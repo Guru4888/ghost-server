@@ -3,11 +3,15 @@ from flask_socketio import SocketIO, emit, join_room, leave_room
 import os
 import sqlite3
 import datetime
+from werkzeug.utils import secure_filename
 
 app = Flask(__name__)
 app.secret_key = "ghost_super_secret_key_multi_user_998877"
 
 DB_FILE = "database.db"
+UPLOAD_FOLDER = "static/uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 def init_db():
     conn = sqlite3.connect(DB_FILE)
@@ -44,7 +48,7 @@ def add_security_headers(response):
     response.headers["Expires"] = "0"
     return response
 
-# Calculator Disguise + Login Portal combined HTML (Fixed Touch/Click event listeners)
+# Calculator Disguise + Login Portal combined HTML
 CALC_LOGIN_HTML = """
 <!DOCTYPE html>
 <html lang="en">
@@ -54,8 +58,6 @@ CALC_LOGIN_HTML = """
     <title>Simple Calculator</title>
     <style>
         body { background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
-        
-        /* Calculator UI */
         #calc-container { background: #161b22; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 300px; border: 1px solid #30363d; display: block; z-index: 10; position: relative; }
         #calc-screen { width: 100%; height: 50px; background: #010409; border: 1px solid #30363d; color: white; font-size: 1.5rem; text-align: right; padding: 10px; box-sizing: border-box; border-radius: 6px; margin-bottom: 15px; overflow-x: auto; }
         .calc-keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
@@ -66,7 +68,6 @@ CALC_LOGIN_HTML = """
         .calc-btn.equal { background: #238636; grid-column: span 2; }
         .calc-btn.equal:active { background: #2ea043; }
 
-        /* Secret Portal UI (Hidden by default) */
         #portal-container { display: none; background: #161b22; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 330px; text-align: center; border: 1px solid #30363d; z-index: 10; position: relative; }
         #portal-container input, #portal-container select { width: 100%; padding: 10px; margin: 6px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
         .secure-pass { -webkit-text-security: disc; text-security: disc; }
@@ -82,7 +83,6 @@ CALC_LOGIN_HTML = """
     </style>
 </head>
 <body>
-    <!-- Calculator Wrapper -->
     <div id="calc-container">
         <div id="calc-screen">0</div>
         <div class="calc-keys">
@@ -108,7 +108,6 @@ CALC_LOGIN_HTML = """
         </div>
     </div>
 
-    <!-- Secret Portal Box -->
     <div id="portal-container">
         <h2>🔒 Multi-User Portal</h2>
         <div class="tabs">
@@ -149,17 +148,14 @@ CALC_LOGIN_HTML = """
 
     <script>
         let calcExpr = "";
-
         document.querySelectorAll('.calc-btn').forEach(button => {
             button.addEventListener('click', function(e) {
                 e.preventDefault();
-                const val = this.getAttribute('data-val');
-                handleCalcInput(val);
+                handleCalcInput(this.getAttribute('data-val'));
             });
             button.addEventListener('touchend', function(e) {
                 e.preventDefault();
-                const val = this.getAttribute('data-val');
-                handleCalcInput(val);
+                handleCalcInput(this.getAttribute('data-val'));
             });
         });
 
@@ -207,69 +203,50 @@ CALC_LOGIN_HTML = """
             if(!user) return;
             let res = await fetch('/get-question?username=' + encodeURIComponent(user));
             let data = await res.json();
-            if(res.ok) {
-                document.getElementById("q-display").innerText = "Question: " + data.question;
-            } else {
-                document.getElementById("q-display").innerText = "User not found!";
-            }
+            if(res.ok) { document.getElementById("q-display").innerText = "Question: " + data.question; }
+            else { document.getElementById("q-display").innerText = "User not found!"; }
         }
 
         async function loginUser() {
-            const user = document.getElementById("login-user").value.trim();
-            const pass = document.getElementById("login-pass").value.trim();
             let response = await fetch('/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: user, password: pass })
+                body: JSON.stringify({ username: document.getElementById("login-user").value.trim(), password: document.getElementById("login-pass").value.trim() })
             });
             let result = await response.json();
-            if (response.ok && result.status === "success") {
-                window.location.href = "/chat";
-            } else {
-                document.getElementById("loginError").innerText = result.message || "Login failed!";
-            }
+            if (response.ok && result.status === "success") { window.location.href = "/chat"; }
+            else { document.getElementById("loginError").innerText = result.message || "Login failed!"; }
         }
 
         async function registerUser() {
-            const user = document.getElementById("reg-user").value.trim();
-            const pass = document.getElementById("reg-pass").value.trim();
-            const q = document.getElementById("reg-q").value;
-            const ans = document.getElementById("reg-ans").value.trim();
             let response = await fetch('/register', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: user, password: pass, question: q, answer: ans })
+                body: JSON.stringify({ username: document.getElementById("reg-user").value.trim(), password: document.getElementById("reg-pass").value.trim(), question: document.getElementById("reg-q").value, answer: document.getElementById("reg-ans").value.trim() })
             });
             let result = await response.json();
             let msgEl = document.getElementById("regMsg");
             if (response.ok && result.status === "success") {
-                msgEl.className = "success-msg";
-                msgEl.innerText = "Account created! You can now login.";
+                msgEl.className = "success-msg"; msgEl.innerText = "Account created! You can now login.";
                 setTimeout(() => switchTab('login', {target: document.querySelectorAll('.tab-btn')[0]}), 1500);
             } else {
-                msgEl.className = "error-msg";
-                msgEl.innerText = result.message || "Registration failed!";
+                msgEl.className = "error-msg"; msgEl.innerText = result.message || "Registration failed!";
             }
         }
 
         async function resetPassword() {
-            const user = document.getElementById("forgot-user").value.trim();
-            const ans = document.getElementById("forgot-ans").value.trim();
-            const pass = document.getElementById("forgot-new-pass").value.trim();
             let response = await fetch('/reset-password', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: user, answer: ans, new_password: pass })
+                body: JSON.stringify({ username: document.getElementById("forgot-user").value.trim(), answer: document.getElementById("forgot-ans").value.trim(), new_password: document.getElementById("forgot-new-pass").value.trim() })
             });
             let result = await response.json();
             let msgEl = document.getElementById("forgotMsg");
             if (response.ok && result.status === "success") {
-                msgEl.className = "success-msg";
-                msgEl.innerText = "Password updated! You can now login.";
+                msgEl.className = "success-msg"; msgEl.innerText = "Password updated! You can now login.";
                 setTimeout(() => switchTab('login', {target: document.querySelectorAll('.tab-btn')[0]}), 1500);
             } else {
-                msgEl.className = "error-msg";
-                msgEl.innerText = result.message || "Reset failed!";
+                msgEl.className = "error-msg"; msgEl.innerText = result.message || "Reset failed!";
             }
         }
     </script>
@@ -348,8 +325,7 @@ ADMIN_HTML = """
                 document.getElementById('total-count').innerText = data.users.length;
                 let usrListEl = document.getElementById('users-list');
                 let blockedListEl = document.getElementById('blocked-list');
-                usrListEl.innerHTML = "";
-                blockedListEl.innerHTML = "";
+                usrListEl.innerHTML = ""; blockedListEl.innerHTML = "";
 
                 data.users.forEach(u => {
                     let isBlocked = data.blocked.includes(u);
@@ -365,9 +341,8 @@ ADMIN_HTML = """
                         </li>`;
                 });
 
-                if(data.blocked.length === 0) {
-                    blockedListEl.innerHTML = `<li style="justify-content:center; color:#8b949e;">No blocked users</li>`;
-                } else {
+                if(data.blocked.length === 0) { blockedListEl.innerHTML = `<li style="justify-content:center; color:#8b949e;">No blocked users</li>`; }
+                else {
                     data.blocked.forEach(bu => {
                         blockedListEl.innerHTML += `
                             <li>
@@ -384,48 +359,31 @@ ADMIN_HTML = """
 
         async function blockUser(username) {
             if (confirm("Are you sure you want to block " + username + "?")) {
-                let res = await fetch('/block-user', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: username })
-                });
-                let data = await res.json();
-                if (data.status === "success") { fetchDashboard(); }
+                let res = await fetch('/block-user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: username }) });
+                if ((await res.json()).status === "success") { fetchDashboard(); }
             }
         }
 
         async function unblockUser(username) {
-            let res = await fetch('/unblock-user', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username: username })
-            });
-            let data = await res.json();
-            if (data.status === "success") { fetchDashboard(); }
+            let res = await fetch('/unblock-user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: username }) });
+            if ((await res.json()).status === "success") { fetchDashboard(); }
         }
 
         async function deleteUser(username) {
             if (confirm("Are you sure you want to permanently delete " + username + "?")) {
-                let res = await fetch('/delete-user', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: username })
-                });
-                let data = await res.json();
-                if (data.status === "success") { fetchDashboard(); }
+                let res = await fetch('/delete-user', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: username }) });
+                if ((await res.json()).status === "success") { fetchDashboard(); }
             }
         }
 
         function startSpying() {
             const roomName = document.getElementById('spy-room-input').value.trim();
             if(!roomName) { alert("Enter room name first!"); return; }
-            
             if(spyingRoom) { socket.emit('admin_leave_spy', { room: spyingRoom }); }
             spyingRoom = roomName;
             document.getElementById('monitor-section').style.display = 'block';
             document.getElementById('spy-room-title').innerText = "Room: " + roomName;
             document.getElementById('monitor-messages').innerHTML = "";
-
             socket.emit('admin_join_spy', { room: roomName });
         }
 
@@ -442,17 +400,10 @@ ADMIN_HTML = """
 
         socket.on('admin_rooms_list', (rooms) => {
             let listEl = document.getElementById('active-rooms-list');
-            if(rooms.length === 0) {
-                listEl.innerHTML = `<li style="justify-content:center; color:#8b949e;">No active rooms right now</li>`;
-                return;
-            }
+            if(rooms.length === 0) { listEl.innerHTML = `<li style="justify-content:center; color:#8b949e;">No active rooms right now</li>`; return; }
             listEl.innerHTML = "";
             rooms.forEach(r => {
-                listEl.innerHTML += `
-                    <li>
-                        <span>👻 ${r.room} <b style="color:#3fb950;">(${r.users} users)</b></span>
-                        <button class="action-btn monitor-btn" onclick="spySpecificRoom('${r.room}')">Read Chats</button>
-                    </li>`;
+                listEl.innerHTML += `<li><span>👻 ${r.room} <b style="color:#3fb950;">(${r.users} users)</b></span><button class="action-btn monitor-btn" onclick="spySpecificRoom('${r.room}')">Read Chats</button></li>`;
             });
         });
 
@@ -462,10 +413,7 @@ ADMIN_HTML = """
             box.scrollTop = box.scrollHeight;
         });
 
-        setInterval(() => {
-            socket.emit('get_admin_rooms');
-        }, 3000);
-
+        setInterval(() => { socket.emit('get_admin_rooms'); }, 3000);
         fetchDashboard();
     </script>
 </body>
@@ -509,19 +457,24 @@ CHAT_HTML = """
         .btn-e2ee.active { background-color: #238636; color: white; border-color: #2ea043; }
         .btn-admin { background-color: #d29922; display: none; color: #0d1117; }
         .btn-logout-manual { background-color: #da3633; color: white; }
+        
         #messages { flex-grow: 1; overflow-y: auto; padding: 15px; background: #0d1117; display: flex; flex-direction: column; gap: 12px; }
-        .msg-card { padding: 4px 8px; max-width: 75%; word-wrap: break-word; font-size: 0.9rem; position: relative; background: transparent !important; border: none !important; }
-        .my-msg { align-self: flex-end; }
+        .msg-card { padding: 6px 10px; max-width: 75%; word-wrap: break-word; font-size: 0.9rem; position: relative; background: #21262d; border-radius: 8px; border: 1px solid #30363d; }
+        .my-msg { align-self: flex-end; background: #1f382b; }
         .other-msg { align-self: flex-start; }
         .user-id { font-size: 0.7em; color: #8b949e; margin-bottom: 2px; display: block; font-weight: bold; }
         .msg-footer { display: flex; justify-content: flex-end; align-items: center; gap: 4px; font-size: 0.65rem; margin-top: 2px; color: #cbd5e1; }
         .ticks { font-size: 0.85rem; font-family: monospace; color: #8b949e; }
         .ticks.seen { color: #53bdeb !important; }
-        .input-box { display: flex; padding: 12px; background: #21262d; gap: 8px; border-top: 1px solid #30363d; flex-direction: column; }
-        .input-row { display: flex; gap: 8px; width: 100%; }
-        input { width: 100%; padding: 10px; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; outline: none; user-select: text; }
-        button.btn-send { padding: 10px 18px; background: #238636; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
-        #typing-indicator { font-size: 0.75rem; color: #3fb950; font-style: italic; height: 15px; }
+        
+        .input-box { display: flex; padding: 10px; background: #21262d; gap: 6px; border-top: 1px solid #30363d; flex-direction: column; }
+        .input-row { display: flex; gap: 6px; width: 100%; align-items: center; }
+        input[type="text"] { width: 100%; padding: 10px; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; outline: none; user-select: text; }
+        button.btn-send { padding: 10px 14px; background: #238636; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .btn-attach { background: #30363d; color: #58a6ff; border: 1px solid #484f58; padding: 10px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 1rem; }
+        #typing-indicator { font-size: 0.75rem; color: #3fb950; font-style: italic; height: 12px; }
+        
+        .chat-media { max-width: 100%; max-height: 200px; border-radius: 6px; margin-top: 4px; display: block; cursor: pointer; }
         
         #video-container { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 1000; justify-content: center; align-items: center; flex-direction: column; }
         .video-box { position: relative; width: 85%; max-width: 420px; background: #161b22; border-radius: 12px; padding: 15px; border: 1px solid #30363d; display: flex; flex-direction: column; align-items: center; }
@@ -537,7 +490,6 @@ CHAT_HTML = """
         <div class="lobby-box">
             <h3>🌐 Room Gateway</h3>
             <p style="color: #8b949e; font-size: 11px; margin-bottom: 10px;">Enter room details to create or join.</p>
-            
             <input type="text" id="room-name-input" placeholder="Room Name" autocomplete="off">
             <input type="text" id="room-pass-input" placeholder="Room Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
             <button id="gate-btn" onclick="joinProtectedRoom()">Join / Create Room</button>
@@ -549,12 +501,11 @@ CHAT_HTML = """
                     <div style="color: #8b949e; font-size: 11px; text-align: center; padding: 5px;">No rooms joined yet</div>
                 </div>
             </div>
-
             <button onclick="instantLogout()" style="background: #da3633; margin-top: 15px;">🚪 Logout Portal</button>
         </div>
     </div>
 
-    <!-- Professional Call Screen -->
+    <!-- Call Screen -->
     <div id="video-container">
         <div class="video-box">
             <h4 id="call-status-title" style="color: #58a6ff; margin: 0 0 10px 0; font-size: 1rem;">Secure Call Connected</h4>
@@ -580,10 +531,14 @@ CHAT_HTML = """
                 <button class="btn-call btn-logout-manual" onclick="returnToLobby()">🔙 Lobby</button>
             </div>
         </div>
+        
         <div id="messages"></div>
+        
         <div class="input-box">
             <div id="typing-indicator"></div>
             <div class="input-row">
+                <input type="file" id="file-input" style="display:none;" onchange="uploadAndSendFile()">
+                <button class="btn-attach" onclick="document.getElementById('file-input').click()" title="Attach Photo or File">📎</button>
                 <input type="text" id="msg-input" placeholder="Type a message..." autocomplete="off" oninput="notifyTyping()" onkeypress="if(event.key==='Enter') sendMessage()">
                 <button class="btn-send" onclick="sendMessage()">Send</button>
             </div>
@@ -591,18 +546,7 @@ CHAT_HTML = """
     </div>
 
     <script>
-        document.addEventListener('keyup', (e) => {
-            if (e.key === 'PrintScreen') { triggerSecurityAlert(); }
-        });
-
-        if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
-            const originalGetDisplayMedia = navigator.mediaDevices.getDisplayMedia;
-            navigator.mediaDevices.getDisplayMedia = function(constraints) {
-                triggerSecurityAlert();
-                return originalGetDisplayMedia.call(navigator.mediaDevices, constraints);
-            };
-        }
-
+        document.addEventListener('keyup', (e) => { if (e.key === 'PrintScreen') { triggerSecurityAlert(); } });
         document.addEventListener("visibilitychange", async () => {
             if (document.hidden) {
                 try { await fetch('/logout', { method: 'GET', cache: "no-store" }); } catch(e) {}
@@ -620,24 +564,15 @@ CHAT_HTML = """
             window.location.href = "/";
         }
 
-        function triggerSecurityAlert() {
-            document.getElementById('security-warning').style.display = 'flex';
-        }
+        function triggerSecurityAlert() { document.getElementById('security-warning').style.display = 'flex'; }
 
-        const socket = io({ 
-            transports: ['polling', 'websocket'],
-            reconnection: true,
-            reconnectionAttempts: Infinity,
-            reconnectionDelay: 1000,
-            timeout: 30000
-        });
+        const socket = io({ transports: ['polling', 'websocket'], reconnection: true, reconnectionAttempts: Infinity, timeout: 30000 });
 
         let currentRoom = "";
         let roomPassword = "";
         let myUsername = "User";
         let typingTimeout = null;
         let lastSender = null;
-        
         let isE2EEActive = localStorage.getItem('ghost_e2ee') === 'true';
         updateE2EEButtonUI();
         renderJoinedRooms();
@@ -657,30 +592,17 @@ CHAT_HTML = """
 
         function saveRoomToHistory(name) {
             let history = JSON.parse(localStorage.getItem('ghost_rooms_history') || '[]');
-            if (!history.includes(name)) {
-                history.push(name);
-                localStorage.setItem('ghost_rooms_history', JSON.stringify(history));
-            }
+            if (!history.includes(name)) { history.push(name); localStorage.setItem('ghost_rooms_history', JSON.stringify(history)); }
             renderJoinedRooms();
         }
 
         function renderJoinedRooms() {
             let historyListEl = document.getElementById('joined-rooms-list');
             let history = JSON.parse(localStorage.getItem('ghost_rooms_history') || '[]');
-
-            if(history.length === 0) {
-                historyListEl.innerHTML = `<div style="color: #8b949e; font-size: 11px; text-align: center; padding: 5px;">No rooms joined yet</div>`;
-                return;
-            }
-
+            if(history.length === 0) { historyListEl.innerHTML = `<div style="color: #8b949e; font-size: 11px; text-align: center; padding: 5px;">No rooms joined yet</div>`; return; }
             historyListEl.innerHTML = "";
             history.forEach(rName => {
-                historyListEl.innerHTML += `
-                    <div class="room-item" onclick="quickSelectRoom('${rName}')">
-                        <span>👻 ${rName}</span>
-                        <span style="font-size:10px; color:#58a6ff;">Select ➔</span>
-                    </div>
-                `;
+                historyListEl.innerHTML += `<div class="room-item" onclick="quickSelectRoom('${rName}')"><span>👻 ${rName}</span><span style="font-size:10px; color:#58a6ff;">Select ➔</span></div>`;
             });
         }
 
@@ -695,38 +617,18 @@ CHAT_HTML = """
             const rPass = document.getElementById("room-pass-input").value.trim();
             const errEl = document.getElementById("gate-error");
             const btnEl = document.getElementById("gate-btn");
-
-            if(!rName || !rPass) {
-                errEl.innerText = "Please enter both room name and password!";
-                return;
-            }
-
-            errEl.innerText = "";
-            btnEl.innerText = "Connecting...";
-            btnEl.disabled = true;
-
-            currentRoom = rName;
-            roomPassword = rPass;
-
+            if(!rName || !rPass) { errEl.innerText = "Please enter room name and password!"; return; }
+            errEl.innerText = ""; btnEl.innerText = "Connecting..."; btnEl.disabled = true;
+            currentRoom = rName; roomPassword = rPass;
             socket.emit('verify_and_join', { room: currentRoom, password: roomPassword, user: myUsername });
-
-            setTimeout(() => {
-                if(btnEl.innerText === "Connecting...") {
-                    btnEl.innerText = "Join / Create Room";
-                    btnEl.disabled = false;
-                }
-            }, 6000);
+            setTimeout(() => { if(btnEl.innerText === "Connecting...") { btnEl.innerText = "Join / Create Room"; btnEl.disabled = false; } }, 6000);
         }
 
         socket.on('room_join_response', (data) => {
             const btnEl = document.getElementById("gate-btn");
-            if(btnEl) {
-                btnEl.innerText = "Join / Create Room";
-                btnEl.disabled = false;
-            }
-
+            if(btnEl) { btnEl.innerText = "Join / Create Room"; btnEl.disabled = false; }
             if(data.status === "success") {
-                saveRoomToHistory(currentRoom); 
+                saveRoomToHistory(currentRoom);
                 document.getElementById('room-lobby').style.display = 'none';
                 document.getElementById('chat-screen').style.display = 'flex';
                 document.getElementById('room-title').innerText = "👻 " + currentRoom + ` (${data.active_users} online)`;
@@ -738,8 +640,7 @@ CHAT_HTML = """
 
         function returnToLobby() {
             socket.emit('leave_current_room', { room: currentRoom, user: myUsername });
-            currentRoom = "";
-            roomPassword = "";
+            currentRoom = ""; roomPassword = "";
             document.getElementById('chat-screen').style.display = 'none';
             document.getElementById('room-lobby').style.display = 'flex';
             document.getElementById('messages').innerHTML = "";
@@ -776,9 +677,7 @@ CHAT_HTML = """
         function notifyTyping() {
             socket.emit('typing', { room: currentRoom, user: myUsername });
             clearTimeout(typingTimeout);
-            typingTimeout = setTimeout(() => {
-                socket.emit('stop_typing', { room: currentRoom, user: myUsername });
-            }, 1000);
+            typingTimeout = setTimeout(() => { socket.emit('stop_typing', { room: currentRoom, user: myUsername }); }, 1000);
         }
 
         function sendMessage() {
@@ -787,38 +686,67 @@ CHAT_HTML = """
             if (text !== "") {
                 socket.emit('stop_typing', { room: currentRoom, user: myUsername });
                 const msgId = 'msg_' + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
-                const messageData = { 
-                    id: msgId,
-                    room: currentRoom, 
-                    user: myUsername, 
-                    msg: encryptText(text), 
-                    timestamp: Date.now() 
-                };
+                const messageData = { id: msgId, room: currentRoom, user: myUsername, type: 'text', content: encryptText(text), timestamp: Date.now() };
                 appendMessageToScreen(messageData, true);
                 socket.emit('send_message', { room: currentRoom, password: roomPassword, data: messageData });
                 input.value = "";
             }
         }
 
-        function appendMessageToScreen(data, isMine) {
-            const now = Date.now();
-            const msgTimestamp = data.timestamp || now;
-            const msgBox = document.getElementById('messages');
+        async function uploadAndSendFile() {
+            const fileInput = document.getElementById('file-input');
+            if (fileInput.files.length === 0) return;
+            const file = fileInput.files[0];
+            let formData = new FormData();
+            formData.append('file', file);
             
+            try {
+                let res = await fetch('/upload-attachment', { method: 'POST', body: formData });
+                let result = await res.json();
+                if(res.ok && result.status === 'success') {
+                    const msgId = 'msg_' + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
+                    const messageData = { 
+                        id: msgId, 
+                        room: currentRoom, 
+                        user: myUsername, 
+                        type: file.type.startsWith('image/') ? 'image' : 'file', 
+                        content: result.file_url, 
+                        filename: file.name,
+                        timestamp: Date.now() 
+                    };
+                    appendMessageToScreen(messageData, true);
+                    socket.emit('send_message', { room: currentRoom, password: roomPassword, data: messageData });
+                } else {
+                    alert(result.message || "Upload failed!");
+                }
+            } catch(e) { alert("File upload error!"); }
+            fileInput.value = "";
+        }
+
+        function appendMessageToScreen(data, isMine) {
+            const msgBox = document.getElementById('messages');
             const msgCard = document.createElement('div');
             msgCard.className = `msg-card ${isMine ? 'my-msg' : 'other-msg'}`;
             
             let showUserHeading = (data.user !== lastSender);
             lastSender = data.user;
-
             let userHTML = showUserHeading ? `<span class="user-id">${data.user}</span>` : '';
             let ticksHTML = isMine ? `<span id="tick_${data.id}" class="ticks">✓</span>` : '';
             
+            let contentHTML = "";
+            if (data.type === 'image') {
+                contentHTML = `<a href="${data.content}" target="_blank"><img src="${data.content}" class="chat-media"></a>`;
+            } else if (data.type === 'file') {
+                contentHTML = `<a href="${data.content}" target="_blank" style="color: #58a6ff; text-decoration: underline;">📁 Download File (${data.filename || 'Attachment'})</a>`;
+            } else {
+                contentHTML = `<div>${decryptText(data.content)}</div>`;
+            }
+
             msgCard.innerHTML = `
                 ${userHTML}
-                <div>${decryptText(data.msg)}</div>
+                ${contentHTML}
                 <div class="msg-footer">
-                    <span>${new Date(msgTimestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                    <span>${new Date(data.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                     ${ticksHTML}
                 </div>
             `;
@@ -829,16 +757,10 @@ CHAT_HTML = """
             if(!isMine) {
                 socket.emit('message_seen', { room: currentRoom, password: roomPassword, id: data.id });
             }
-
-            let remainingLife = 60000 - (now - msgTimestamp);
-            if (remainingLife < 1000) remainingLife = 1000;
-            setTimeout(() => { if(msgCard.parentNode) msgCard.parentNode.removeChild(msgCard); }, remainingLife);
         }
 
         socket.on('receive_message', (data) => {
-            if (data.user !== myUsername) {
-                appendMessageToScreen(data, false);
-            }
+            if (data.user !== myUsername) { appendMessageToScreen(data, false); }
         });
 
         socket.on('message_delivered', (data) => {
@@ -848,22 +770,15 @@ CHAT_HTML = """
 
         socket.on('message_seen_ack', (data) => {
             let tickEl = document.getElementById('tick_' + data.id);
-            if(tickEl) {
-                tickEl.innerText = "✓✓";
-                tickEl.className = "ticks seen";
-            }
+            if(tickEl) { tickEl.innerText = "✓✓"; tickEl.className = "ticks seen"; }
         });
 
         socket.on('display_typing', (data) => {
-            if(data.user !== myUsername) {
-                document.getElementById('typing-indicator').innerText = data.user + " is typing...";
-            }
+            if(data.user !== myUsername) { document.getElementById('typing-indicator').innerText = data.user + " is typing..."; }
         });
 
         socket.on('hide_typing', (data) => {
-            if(data.user !== myUsername) {
-                document.getElementById('typing-indicator').innerText = "";
-            }
+            if(data.user !== myUsername) { document.getElementById('typing-indicator').innerText = ""; }
         });
 
         let localStream, peerConnection;
@@ -882,62 +797,65 @@ CHAT_HTML = """
                 } else {
                     statusTitle.innerText = "📞 Audio Call Connected";
                     localVidEl.style.display = 'none';
-                    localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+                    // Force default earpiece/normal constraints for audio call
+                    localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
                 }
 
                 localVidEl.srcObject = localStream;
                 peerConnection = new RTCPeerConnection(servers);
-                
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
                 
                 peerConnection.ontrack = e => {
-                    const remoteVidEl = document.getElementById('remoteVideo');
+                    const remoteVidEl = document.createElement('audio');
+                    remoteVidEl.autoplay = true;
+                    // Ensure audio routes through earpiece/default receiver instead of speakerphone if supported
+                    if ('setSinkId' in remoteVidEl) {
+                        // default sink
+                    }
+                    const existingAudio = document.getElementById('remoteAudioElement');
+                    if(existingAudio) existingAudio.remove();
+                    
+                    remoteVidEl.id = 'remoteAudioElement';
                     remoteVidEl.srcObject = e.streams[0];
-                    remoteVidEl.muted = false;
+                    document.body.appendChild(remoteVidEl);
                 };
 
                 peerConnection.onicecandidate = e => { 
-                    if (e.candidate) {
-                        socket.emit('ice_candidate', { room: currentRoom, password: roomPassword, candidate: e.candidate, type: type }); 
-                    }
+                    if (e.candidate) { socket.emit('ice_candidate', { room: currentRoom, password: roomPassword, candidate: e.candidate, type: type }); }
                 };
 
                 let offer = await peerConnection.createOffer();
                 await peerConnection.setLocalDescription(offer);
                 socket.emit('offer', { room: currentRoom, password: roomPassword, offer: offer, type: type });
-            } catch (err) { 
-                alert("Microphone/Camera permission denied or error occurred!"); 
-                endCall(); 
-            }
+            } catch (err) { alert("Microphone/Camera permission denied!"); endCall(); }
         }
 
         socket.on('offer', async (data) => {
             document.getElementById('video-container').style.display = 'flex';
             const statusTitle = document.getElementById('call-status-title');
             const localVidEl = document.getElementById('localVideo');
-            
             statusTitle.innerText = data.type === 'video' ? "📹 Video Call Connected" : "📞 Audio Call Connected";
-            if(data.type === 'video') {
-                localVidEl.style.display = 'block';
-            } else {
-                localVidEl.style.display = 'none';
-            }
+            localVidEl.style.display = data.type === 'video' ? 'block' : 'none';
 
             peerConnection = new RTCPeerConnection(servers);
             try {
-                localStream = await navigator.mediaDevices.getUserMedia({ video: data.type === 'video', audio: true });
+                localStream = await navigator.mediaDevices.getUserMedia({ video: data.type === 'video', audio: { echoCancellation: true, noiseSuppression: true } });
                 localVidEl.srcObject = localStream;
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
             } catch(e){}
 
             peerConnection.ontrack = e => {
-                document.getElementById('remoteVideo').srcObject = e.streams[0];
+                const remoteVidEl = document.createElement('audio');
+                remoteVidEl.autoplay = true;
+                const existingAudio = document.getElementById('remoteAudioElement');
+                if(existingAudio) existingAudio.remove();
+                remoteVidEl.id = 'remoteAudioElement';
+                remoteVidEl.srcObject = e.streams[0];
+                document.body.appendChild(remoteVidEl);
             };
 
             peerConnection.onicecandidate = e => { 
-                if (e.candidate) {
-                    socket.emit('ice_candidate', { room: currentRoom, password: roomPassword, candidate: e.candidate, type: data.type }); 
-                }
+                if (e.candidate) { socket.emit('ice_candidate', { room: currentRoom, password: roomPassword, candidate: e.candidate, type: data.type }); }
             };
 
             await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
@@ -946,24 +864,15 @@ CHAT_HTML = """
             socket.emit('answer', { room: currentRoom, password: roomPassword, answer: ans });
         });
 
-        socket.on('answer', async (data) => { 
-            if(peerConnection) await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer)); 
-        });
-
-        socket.on('ice_candidate', async (data) => { 
-            if (peerConnection && data.candidate) await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate)); 
-        });
+        socket.on('answer', async (data) => { if(peerConnection) await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer)); });
+        socket.on('ice_candidate', async (data) => { if (peerConnection && data.candidate) await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate)); });
 
         function endCall() {
-            if (localStream) {
-                localStream.getTracks().forEach(t => t.stop());
-            }
-            if (peerConnection) {
-                peerConnection.close();
-                peerConnection = null;
-            }
+            if (localStream) { localStream.getTracks().forEach(t => t.stop()); }
+            if (peerConnection) { peerConnection.close(); peerConnection = null; }
+            let audioEl = document.getElementById('remoteAudioElement');
+            if(audioEl) audioEl.remove();
             document.getElementById('localVideo').srcObject = null;
-            document.getElementById('remoteVideo').srcObject = null;
             document.getElementById('video-container').style.display = 'none';
         }
     </script>
@@ -974,6 +883,7 @@ CHAT_HTML = """
 ROOM_PASSWORDS = {}
 ROOM_USERS = {}
 ONLINE_USERS = set()
+ROOM_FILES = {}  # Tracks uploaded files per room for instant cleanup
 
 @app.route('/')
 def home():
@@ -985,10 +895,9 @@ def logout():
     u = session.get('user')
     if u:
         ONLINE_USERS.discard(u)
-        now_str = datetime.datetime.now().strftime("%I:%M %p")
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
-        cursor.execute("UPDATE users SET last_seen = ? WHERE username = ?", (now_str, u))
+        cursor.execute("UPDATE users SET last_seen = ? WHERE username = ?", (datetime.datetime.now().strftime("%I:%M %p"), u))
         conn.commit()
         conn.close()
     session.clear()
@@ -1000,16 +909,13 @@ def register():
     u, p = data.get('username', '').strip(), data.get('password', '').strip()
     q, a = data.get('question', '').strip(), data.get('answer', '').strip()
     if not u or not p or not a: return jsonify({"status": "error", "message": "All fields required!"}), 400
-    
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM users WHERE username = ?", (u,))
     if cursor.fetchone():
         conn.close()
         return jsonify({"status": "error", "message": "Username already exists!"}), 400
-    
-    cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
-                   (u, p, q, a, "Never"))
+    cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", (u, p, q, a, "Never"))
     conn.commit()
     conn.close()
     return jsonify({"status": "success"})
@@ -1022,18 +928,13 @@ def get_question():
     cursor.execute("SELECT sec_question FROM users WHERE username = ?", (u,))
     row = cursor.fetchone()
     conn.close()
-    if row:
-        return jsonify({"question": row[0]})
-    return jsonify({"error": "User not found"}), 404
+    return jsonify({"question": row[0]}) if row else (jsonify({"error": "User not found"}), 404)
 
 @app.route('/reset-password', methods=['POST'])
 def reset_password():
     data = request.json
-    u = data.get('username', '').strip()
-    ans = data.get('answer', '').strip()
-    p = data.get('new_password', '').strip()
+    u, ans, p = data.get('username', '').strip(), data.get('answer', '').strip(), data.get('new_password', '').strip()
     if not u or not ans or not p: return jsonify({"status": "error", "message": "All fields required!"}), 400
-    
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("SELECT sec_answer FROM users WHERE username = ?", (u,))
@@ -1041,11 +942,9 @@ def reset_password():
     if not row:
         conn.close()
         return jsonify({"status": "error", "message": "Username not found!"}), 404
-        
     if row[0].lower() != ans.lower():
         conn.close()
         return jsonify({"status": "error", "message": "Incorrect Security Answer!"}), 401
-        
     cursor.execute("UPDATE users SET password = ? WHERE username = ?", (p, u))
     conn.commit()
     conn.close()
@@ -1055,18 +954,15 @@ def reset_password():
 def login():
     data = request.json
     u, p = data.get('username', '').strip(), data.get('password', '').strip()
-    
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM blocked WHERE username = ?", (u,))
     if cursor.fetchone():
         conn.close()
         return jsonify({"status": "error", "message": "User is blocked!"}), 403
-        
     cursor.execute("SELECT password FROM users WHERE username = ?", (u,))
     row = cursor.fetchone()
     conn.close()
-    
     if row and row[0] == p:
         session['authenticated'] = True
         session['user'] = u
@@ -1078,28 +974,31 @@ def login():
 @app.route('/check-session')
 def check_session():
     user = session.get('user')
-    if not user:
-        return jsonify({"authenticated": False})
-        
+    if not user: return jsonify({"authenticated": False})
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM blocked WHERE username = ?", (user,))
     is_blocked = cursor.fetchone() is not None
-    
     cursor.execute("SELECT * FROM users WHERE username = ?", (user,))
     is_deleted = cursor.fetchone() is None
     conn.close()
-    
-    if session.get('authenticated') and not is_blocked and not is_deleted:
-        ONLINE_USERS.add(user)
-    
-    return jsonify({
-        "authenticated": session.get('authenticated', False) and not is_blocked and not is_deleted,
-        "is_admin": session.get('is_admin', False),
-        "username": user,
-        "is_blocked": is_blocked,
-        "is_deleted": is_deleted
-    })
+    if session.get('authenticated') and not is_blocked and not is_deleted: ONLINE_USERS.add(user)
+    return jsonify({"authenticated": session.get('authenticated', False) and not is_blocked and not is_deleted, "is_admin": session.get('is_admin', False), "username": user, "is_blocked": is_blocked, "is_deleted": is_deleted})
+
+@app.route('/upload-attachment', methods=['POST'])
+def upload_attachment():
+    if 'file' not in request.files:
+        return jsonify({"status": "error", "message": "No file part"}), 400
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"status": "error", "message": "No selected file"}), 400
+    if file:
+        filename = secure_filename(file.filename)
+        unique_name = f"{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}_{filename}"
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], unique_name)
+        file.save(filepath)
+        return jsonify({"status": "success", "file_url": f"/static/uploads/{unique_name}"})
+    return jsonify({"status": "error", "message": "Upload failed"}), 400
 
 @app.route('/admin-panel-guru')
 def admin_panel():
@@ -1161,7 +1060,6 @@ def delete_user():
 def chat():
     user = session.get('user')
     if not user: return redirect(url_for('home'))
-    
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("SELECT * FROM blocked WHERE username = ?", (user,))
@@ -1169,9 +1067,7 @@ def chat():
     cursor.execute("SELECT * FROM users WHERE username = ?", (user,))
     is_deleted = cursor.fetchone() is None
     conn.close()
-    
-    if not session.get('authenticated') or is_blocked or is_deleted: 
-        return redirect(url_for('home'))
+    if not session.get('authenticated') or is_blocked or is_deleted: return redirect(url_for('home'))
     return CHAT_HTML
 
 @socketio.on('verify_and_join')
@@ -1179,27 +1075,13 @@ def handle_room_verification(data):
     room = data.get('room')
     password = data.get('password')
     username = data.get('user', 'User')
-    
-    if room not in ROOM_PASSWORDS:
-        ROOM_PASSWORDS[room] = password
-        
+    if room not in ROOM_PASSWORDS: ROOM_PASSWORDS[room] = password
     if ROOM_PASSWORDS.get(room) == password:
         join_room(room)
-        
-        if room not in ROOM_USERS:
-            ROOM_USERS[room] = []
-        if username not in ROOM_USERS[room]:
-            ROOM_USERS[room].append(username)
-            
-        emit('room_join_response', {
-            "status": "success", 
-            "active_users": len(ROOM_USERS[room])
-        })
-        emit('room_users_update', {
-            "room": room, 
-            "active_users": len(ROOM_USERS[room]), 
-            "users": ROOM_USERS[room]
-        }, to=room)
+        if room not in ROOM_USERS: ROOM_USERS[room] = []
+        if username not in ROOM_USERS[room]: ROOM_USERS[room].append(username)
+        emit('room_join_response', {"status": "success", "active_users": len(ROOM_USERS[room])})
+        emit('room_users_update', {"room": room, "active_users": len(ROOM_USERS[room]), "users": ROOM_USERS[room]}, to=room)
     else:
         emit('room_join_response', {"status": "error", "message": "Incorrect room password!"})
 
@@ -1212,12 +1094,18 @@ def handle_leave_room(data):
         if len(ROOM_USERS[room]) == 0:
             ROOM_USERS.pop(room, None)
             ROOM_PASSWORDS.pop(room, None)
+            # Auto-delete all attachments/files associated with this room when session completely ends
+            if room in ROOM_FILES:
+                for fpath in ROOM_FILES[room]:
+                    try:
+                        full_path = os.path.join(app.root_path, fpath.lstrip('/'))
+                        if os.path.exists(full_path):
+                            os.remove(full_path)
+                    except Exception as e:
+                        print("Error deleting file:", e)
+                ROOM_FILES.pop(room, None)
         leave_room(room)
-        emit('room_users_update', {
-            "room": room, 
-            "active_users": len(ROOM_USERS.get(room, [])), 
-            "users": ROOM_USERS.get(room, [])
-        }, to=room)
+        emit('room_users_update', {"room": room, "active_users": len(ROOM_USERS.get(room, [])), "users": ROOM_USERS.get(room, [])}, to=room)
 
 @socketio.on('get_admin_rooms')
 def handle_get_admin_rooms():
@@ -1227,21 +1115,21 @@ def handle_get_admin_rooms():
 
 @socketio.on('admin_join_spy')
 def handle_admin_join_spy(data):
-    if session.get('is_admin', False):
-        room = data.get('room')
-        join_room(room)
+    if session.get('is_admin', False): join_room(data.get('room'))
 
 @socketio.on('admin_leave_spy')
 def handle_admin_leave_spy(data):
-    if session.get('is_admin', False):
-        room = data.get('room')
-        leave_room(room)
+    if session.get('is_admin', False): leave_room(data.get('room'))
 
 @socketio.on('send_message')
 def handle_message(data):
     room = data['room']
     if ROOM_PASSWORDS.get(room) == data.get('password'):
         msg_data = data['data']
+        # Track file paths if attachment sent
+        if msg_data.get('type') in ['image', 'file']:
+            if room not in ROOM_FILES: ROOM_FILES[room] = []
+            ROOM_FILES[room].append(msg_data['content'])
         emit('receive_message', msg_data, to=room)
         emit('admin_spy_receive', msg_data, to=room)
         emit('message_delivered', {"id": msg_data['id']}, to=room)
@@ -1253,27 +1141,22 @@ def handle_seen(data):
         emit('message_seen_ack', {"id": data['id']}, to=room)
 
 @socketio.on('typing')
-def handle_typing(data):
-    emit('display_typing', data, to=data['room'], include_self=False)
+def handle_typing(data): emit('display_typing', data, to=data['room'], include_self=False)
 
 @socketio.on('stop_typing')
-def handle_stop_typing(data):
-    emit('hide_typing', data, to=data['room'], include_self=False)
+def handle_stop_typing(data): emit('hide_typing', data, to=data['room'], include_self=False)
 
 @socketio.on('offer')
 def handle_offer(data): 
-    if ROOM_PASSWORDS.get(data['room']) == data.get('password'):
-        emit('offer', data, to=data['room'], include_self=False)
+    if ROOM_PASSWORDS.get(data['room']) == data.get('password'): emit('offer', data, to=data['room'], include_self=False)
 
 @socketio.on('answer')
 def handle_answer(data): 
-    if ROOM_PASSWORDS.get(data['room']) == data.get('password'):
-        emit('answer', data, to=data['room'], include_self=False)
+    if ROOM_PASSWORDS.get(data['room']) == data.get('password'): emit('answer', data, to=data['room'], include_self=False)
 
 @socketio.on('ice_candidate')
 def handle_ice(data): 
-    if ROOM_PASSWORDS.get(data['room']) == data.get('password'):
-        emit('ice_candidate', data, to=data['room'], include_self=False)
+    if ROOM_PASSWORDS.get(data['room']) == data.get('password'): emit('ice_candidate', data, to=data['room'], include_self=False)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
