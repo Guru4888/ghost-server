@@ -1,7 +1,6 @@
 from flask import Flask, request, redirect, url_for, session, jsonify
 from flask_socketio import SocketIO, emit, join_room
 import os
-import time
 
 app = Flask(__name__)
 app.secret_key = "ghost_super_secret_key_multi_user_998877"
@@ -12,11 +11,11 @@ REGISTERED_USERS = {
 }
 BLOCKED_USERS = []
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', ping_timeout=60, ping_interval=25)
 
 @app.after_request
 def add_security_headers(response):
-    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate, max-age=0"
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
     return response
@@ -53,15 +52,15 @@ LOGIN_HTML = """
         </div>
 
         <div id="login-form" class="form-section active">
-            <input type="text" id="login-user" placeholder="Username" autocomplete="off" name="no_autofill_user">
-            <input type="text" id="login-pass" placeholder="Password" autocomplete="off" name="no_autofill_pass" class="secure-pass">
+            <input type="text" id="login-user" placeholder="Username" autocomplete="off">
+            <input type="text" id="login-pass" placeholder="Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
             <button onclick="loginUser()">Login to Chat</button>
             <div id="loginError" class="error-msg"></div>
         </div>
 
         <div id="register-form" class="form-section">
-            <input type="text" id="reg-user" placeholder="Choose Username" autocomplete="off" name="no_autofill_reg_user">
-            <input type="text" id="reg-pass" placeholder="Choose Password" autocomplete="off" name="no_autofill_reg_pass" class="secure-pass">
+            <input type="text" id="reg-user" placeholder="Choose Username" autocomplete="off">
+            <input type="text" id="reg-pass" placeholder="Choose Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
             <button onclick="registerUser()">Create Account</button>
             <div id="regMsg" class="error-msg"></div>
         </div>
@@ -247,31 +246,31 @@ CHAT_HTML = """
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <style>
         * { box-sizing: border-box; }
-        body { background-color: #0d1117; color: #ffffff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; user-select: none; transition: filter 0.3s ease; }
-        .blur-screen { filter: blur(20px); pointer-events: none; }
+        body { background-color: #0d1117; color: #ffffff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; user-select: none; }
         #security-warning { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 9999; justify-content: center; align-items: center; color: #f85149; font-size: 1.5rem; font-weight: bold; text-align: center; padding: 20px; }
         #room-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: flex; justify-content: center; align-items: center; z-index: 999; }
         .modal-box { background: #161b22; padding: 25px; border-radius: 12px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.7); border: 1px solid #30363d; width: 90%; max-width: 400px; }
         .secure-pass { -webkit-text-security: disc; text-security: disc; }
         #chat-screen { display: flex; width: 95%; max-width: 500px; height: 85vh; background: #161b22; border-radius: 12px; flex-direction: column; border: 1px solid #30363d; overflow: hidden; }
-        .top-bar { background: #21262d; padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; }
-        .top-bar h3 { margin: 0; font-size: 0.95rem; color: #58a6ff; }
-        .status-text { font-size: 0.7rem; color: #8b949e; display: block; }
-        .call-btns { display: flex; gap: 4px; align-items: center; }
-        .btn-call { padding: 5px 8px; border-radius: 6px; border: none; font-size: 0.7rem; font-weight: bold; cursor: pointer; color: white; }
+        .top-bar { background: #21262d; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; }
+        .top-bar h3 { margin: 0; font-size: 0.9rem; color: #58a6ff; }
+        .status-text { font-size: 0.65rem; color: #8b949e; display: block; }
+        .call-btns { display: flex; gap: 3px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+        .btn-call { padding: 4px 6px; border-radius: 5px; border: none; font-size: 0.65rem; font-weight: bold; cursor: pointer; color: white; }
         .btn-audio { background-color: #1f6feb; }
         .btn-video { background-color: #8957e5; }
         .btn-e2ee { background-color: #30363d; color: #8b949e; border: 1px solid #484f58; }
         .btn-e2ee.active { background-color: #238636; color: white; border-color: #2ea043; }
         .btn-admin { background-color: #d29922; display: none; color: #0d1117; }
+        .btn-logout-manual { background-color: #da3633; color: white; }
         #messages { flex-grow: 1; overflow-y: auto; padding: 15px; background: #0d1117; display: flex; flex-direction: column; gap: 10px; }
         .msg-card { padding: 8px 12px; border-radius: 10px; max-width: 75%; word-wrap: break-word; font-size: 0.9rem; position: relative; }
         .my-msg { background: #1f6feb; color: #ffffff; align-self: flex-end; }
         .other-msg { background: #21262d; color: #c9d1d9; align-self: flex-start; border: 1px solid #30363d; }
         .user-id { font-size: 0.7em; color: #8b949e; margin-bottom: 2px; display: block; font-weight: bold; }
         .msg-footer { display: flex; justify-content: flex-end; align-items: center; gap: 4px; font-size: 0.65rem; margin-top: 2px; color: #cbd5e1; }
-        .ticks { font-weight: bold; font-size: 0.75rem; letter-spacing: -2px; }
-        .ticks.seen { color: #58a6ff; }
+        .ticks { font-size: 0.85rem; font-family: monospace; color: #8b949e; }
+        .ticks.seen { color: #53bdeb !important; }
         .input-box { display: flex; padding: 12px; background: #21262d; gap: 8px; border-top: 1px solid #30363d; flex-direction: column; }
         .input-row { display: flex; gap: 8px; width: 100%; }
         input { width: 100%; padding: 10px; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; outline: none; user-select: text; }
@@ -287,8 +286,8 @@ CHAT_HTML = """
     <div id="room-modal">
         <div class="modal-box" autocomplete="off">
             <h2>🔑 Join Chat Room</h2>
-            <input type="text" id="room-name" placeholder="Room Name" autocomplete="off" name="no_autofill_room" style="margin-bottom:10px;">
-            <input type="text" id="room-pass" placeholder="Room Password" autocomplete="off" name="no_autofill_room_pass" class="secure-pass" style="margin-bottom:10px;">
+            <input type="text" id="room-name" placeholder="Room Name" autocomplete="off" style="margin-bottom:10px;">
+            <input type="text" id="room-pass" placeholder="Room Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');" style="margin-bottom:10px;">
             <button class="btn-send" style="width: 100%;" onclick="joinReservedRoom()">Enter Room</button>
         </div>
     </div>
@@ -302,32 +301,30 @@ CHAT_HTML = """
     <div id="chat-screen">
         <div class="top-bar">
             <div>
-                <h3>👻 Ghost Tunnel</h3>
+                <h3>👻 Ghost</h3>
                 <span id="display-status" class="status-text">● Online</span>
             </div>
             <div class="call-btns">
-                <button id="e2ee-btn" class="btn-call btn-e2ee" onclick="toggleE2EE()">🔐 E2EE</button>
+                <button id="e2ee-btn" class="btn-call btn-e2ee" onclick="toggleE2EE()">🔐</button>
                 <button class="btn-call btn-audio" onclick="startCall('audio')">📞</button>
                 <button class="btn-call btn-video" onclick="startCall('video')">📹</button>
                 <button id="admin-panel-btn" class="btn-call btn-admin" onclick="window.location.href='/admin-panel-guru'">🛡️</button>
+                <button class="btn-call btn-logout-manual" onclick="instantLogout()">🚪 Logout</button>
             </div>
         </div>
         <div id="messages"></div>
         <div class="input-box">
             <div id="typing-indicator"></div>
             <div class="input-row">
-                <input type="text" id="msg-input" placeholder="Type a message..." autocomplete="off" name="no_autofill_msg" oninput="notifyTyping()" onkeypress="if(event.key==='Enter') sendMessage()">
+                <input type="text" id="msg-input" placeholder="Type a message..." autocomplete="off" oninput="notifyTyping()" onkeypress="if(event.key==='Enter') sendMessage()">
                 <button class="btn-send" onclick="sendMessage()">Send</button>
             </div>
         </div>
     </div>
 
     <script>
-        // Anti-Screen Recording & Capture Detection
         document.addEventListener('keyup', (e) => {
-            if (e.key === 'PrintScreen') {
-                triggerSecurityAlert();
-            }
+            if (e.key === 'PrintScreen') { triggerSecurityAlert(); }
         });
 
         if (navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) {
@@ -338,20 +335,29 @@ CHAT_HTML = """
             };
         }
 
-        document.addEventListener("visibilitychange", () => {
+        document.addEventListener("visibilitychange", async () => {
             if (document.hidden) {
-                document.body.classList.add('blur-screen');
-            } else {
-                document.body.classList.remove('blur-screen');
+                try { await fetch('/logout', { method: 'GET', cache: "no-store" }); } catch(e) {}
+                wipeAndExit();
             }
         });
 
-        function triggerSecurityAlert() {
-            document.getElementById('security-warning').style.display = 'flex';
-            document.body.classList.add('blur-screen');
+        async function instantLogout() {
+            try { await fetch('/logout', { method: 'GET', cache: "no-store" }); } catch(e) {}
+            wipeAndExit();
         }
 
-        const socket = io();
+        function wipeAndExit() {
+            document.body.innerHTML = "<div style='background:#0d1117; color:#f85149; display:flex; justify-content:center; align-items:center; height:100vh; font-family:Arial; font-size:1.5rem; font-weight:bold; text-align:center;'>⚠️ Page Not Available / Session Expired</div>";
+            window.location.href = "/";
+        }
+
+        function triggerSecurityAlert() {
+            document.getElementById('security-warning').style.display = 'flex';
+        }
+
+        const socket = io({ reconnection: false });
+
         let currentRoom = "";
         let myUsername = "User";
         let typingTimeout = null;
@@ -359,22 +365,12 @@ CHAT_HTML = """
         let isE2EEActive = localStorage.getItem('ghost_e2ee') === 'true';
         updateE2EEButtonUI();
 
-        setInterval(async () => {
-            try {
-                let res = await fetch('/check-session');
-                let data = await res.json();
-                if(!data.authenticated || data.is_blocked || data.is_deleted) {
-                    window.location.href = "/logout";
-                }
-            } catch(e) {}
-        }, 5000);
-
         async function initChat() {
             try {
-                let res = await fetch('/check-session');
+                let res = await fetch('/check-session', {cache: "no-store"});
                 let data = await res.json();
                 if(data.authenticated) {
-                    if(data.is_blocked || data.is_deleted) { window.location.href = "/logout"; return; }
+                    if(data.is_blocked || data.is_deleted) { instantLogout(); return; }
                     myUsername = data.username;
                     if(data.is_admin) { document.getElementById('admin-panel-btn').style.display = 'inline-block'; }
                 } else { window.location.href = "/"; }
@@ -390,8 +386,8 @@ CHAT_HTML = """
 
         function updateE2EEButtonUI() {
             const btn = document.getElementById('e2ee-btn');
-            if (isE2EEActive) { btn.className = "btn-call btn-e2ee active"; btn.innerText = "🔐 ON"; } 
-            else { btn.className = "btn-call btn-e2ee"; btn.innerText = "🔐 OFF"; }
+            if (isE2EEActive) { btn.className = "btn-call btn-e2ee active"; btn.innerText = "🔐ON"; } 
+            else { btn.className = "btn-call btn-e2ee"; btn.innerText = "🔐OFF"; }
         }
 
         function encryptText(text) { return !isE2EEActive ? text : "ENC[" + btoa(text) + "]"; }
@@ -505,7 +501,6 @@ CHAT_HTML = """
             }
         });
 
-        // WebRTC Call handlers
         let localStream, peerConnection;
         const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
         async function startCall(type) {
@@ -552,12 +547,7 @@ CHAT_HTML = """
 
 @app.route('/')
 def home():
-    if session.get('authenticated'):
-        user = session.get('user')
-        if user in BLOCKED_USERS or user not in REGISTERED_USERS:
-            session.clear()
-        else:
-            return redirect(url_for('chat'))
+    session.clear()
     return LOGIN_HTML
 
 @app.route('/logout')
@@ -578,13 +568,13 @@ def register():
 def login():
     data = request.json
     u, p = data.get('username', '').strip(), data.get('password', '').strip()
-    if u in BLOCKED_USERS: return jsonify({"status": "error"}), 403
+    if u in BLOCKED_USERS: return jsonify({"status": "error", "message": "User is blocked!"}), 403
     if u in REGISTERED_USERS and REGISTERED_USERS[u] == p:
         session['authenticated'] = True
         session['user'] = u
         session['is_admin'] = (u == "admin")
         return jsonify({"status": "success"})
-    return jsonify({"status": "error"}), 401
+    return jsonify({"status": "error", "message": "Invalid username or password!"}), 401
 
 @app.route('/check-session')
 def check_session():
