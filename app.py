@@ -206,15 +206,18 @@ ADMIN_HTML = """
     <title>Admin Panel</title>
     <style>
         body { background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .admin-box { background: #161b22; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 480px; border: 1px solid #30363d; }
-        ul { list-style: none; padding: 0; max-height: 200px; overflow-y: auto; margin-top: 10px; margin-bottom: 20px; }
+        .admin-box { background: #161b22; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 480px; border: 1px solid #30363d; max-height: 90vh; overflow-y: auto; }
+        ul { list-style: none; padding: 0; max-height: 150px; overflow-y: auto; margin-top: 10px; margin-bottom: 20px; }
         li { background: #21262d; padding: 10px; margin-bottom: 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #30363d; font-size: 13px; }
         .btn-group { display: flex; gap: 5px; }
         button.action-btn { background: #da3633; color: white; border: none; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px; }
         button.block-btn { background: #d29922; color: #0d1117; }
         button.unblock-btn { background: #238636; }
+        button.monitor-btn { background: #1f6feb; }
         .back-link { display: inline-block; margin-top: 15px; color: #58a6ff; text-decoration: none; font-size: 13px; margin-right: 15px; }
         .section-title { font-size: 14px; color: #58a6ff; margin-bottom: 5px; font-weight: bold; }
+        #monitor-section { margin-top: 15px; background: #010409; border: 1px solid #30363d; border-radius: 6px; padding: 10px; display: none; }
+        #monitor-messages { height: 120px; overflow-y: auto; background: #0d1117; padding: 8px; border-radius: 4px; font-size: 12px; margin-top: 8px; }
     </style>
 </head>
 <body>
@@ -228,11 +231,31 @@ ADMIN_HTML = """
         <div class="section-title" style="color: #f85149;">🚫 Blocked Users List</div>
         <ul id="blocked-list"></ul>
 
-        <a href="/chat" class="back-link">⬅ Back to Lobby</a>
-        <a href="/logout" class="back-link" style="color: #f85149;">Logout</a>
+        <div class="section-title" style="color: #58a6ff;">🔍 Spy / Monitor Active Chat Rooms</div>
+        <div style="display: flex; gap: 5px; margin-top: 5px;">
+            <input type="text" id="spy-room-input" placeholder="Enter Room Name to Spy" style="flex:1; padding:6px; background:#010409; border:1px solid #30363d; color:white; border-radius:4px; font-size:12px;" autocomplete="off">
+            <button class="action-btn monitor-btn" onclick="startSpying()">Read Chats</button>
+        </div>
+
+        <div id="monitor-section">
+            <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span id="spy-room-title" style="font-weight:bold; color:#3fb950; font-size:12px;">Room: </span>
+                <button onclick="stopSpying()" style="background:#da3633; border:none; color:white; padding:2px 6px; border-radius:3px; font-size:10px; cursor:pointer;">Close</button>
+            </div>
+            <div id="monitor-messages"></div>
+        </div>
+
+        <div style="margin-top: 15px;">
+            <a href="/chat" class="back-link">⬅ Back to Lobby</a>
+            <a href="/logout" class="back-link" style="color: #f85149;">Logout</a>
+        </div>
     </div>
 
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
+        const socket = io();
+        let spyingRoom = null;
+
         async function fetchDashboard() {
             try {
                 let res = await fetch('/get-admin-data');
@@ -308,6 +331,31 @@ ADMIN_HTML = """
             }
         }
 
+        function startSpying() {
+            const roomName = document.getElementById('spy-room-input').value.trim();
+            if(!roomName) { alert("Enter room name first!"); return; }
+            
+            if(spyingRoom) { socket.emit('admin_leave_spy', { room: spyingRoom }); }
+            spyingRoom = roomName;
+            document.getElementById('monitor-section').style.display = 'block';
+            document.getElementById('spy-room-title').innerText = "Room: " + roomName;
+            document.getElementById('monitor-messages').innerHTML = "";
+
+            socket.emit('admin_join_spy', { room: roomName });
+        }
+
+        function stopSpying() {
+            if(spyingRoom) { socket.emit('admin_leave_spy', { room: spyingRoom }); }
+            spyingRoom = null;
+            document.getElementById('monitor-section').style.display = 'none';
+        }
+
+        socket.on('admin_spy_receive', (data) => {
+            let box = document.getElementById('monitor-messages');
+            box.innerHTML += `<div><b>${data.user}:</b> ${data.msg}</div>`;
+            box.scrollTop = box.scrollHeight;
+        });
+
         fetchDashboard();
     </script>
 </body>
@@ -334,12 +382,8 @@ CHAT_HTML = """
         .secure-pass { -webkit-text-security: disc; text-security: disc; }
         .lobby-box button { width: 100%; padding: 10px; background: #1f6feb; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 8px; }
         .lobby-box button:hover { background: #388bfd; }
-        
-        .room-list { list-style: none; padding: 0; margin-top: 15px; text-align: left; max-height: 140px; overflow-y: auto; }
-        .room-item { background: #21262d; padding: 10px; margin-bottom: 6px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #30363d; font-size: 13px; }
-        .room-item button { width: auto; padding: 5px 10px; margin: 0; background: #238636; font-size: 11px; }
 
-        .users-panel { margin-top: 15px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 10px; text-align: left; max-height: 120px; overflow-y: auto; }
+        .users-panel { margin-top: 15px; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 10px; text-align: left; max-height: 140px; overflow-y: auto; }
         .user-status-item { font-size: 11px; margin-bottom: 4px; display: flex; justify-content: space-between; }
         .online-dot { color: #3fb950; font-weight: bold; }
         .offline-txt { color: #8b949e; }
@@ -380,20 +424,15 @@ CHAT_HTML = """
     <!-- Room Lobby Dashboard -->
     <div id="room-lobby">
         <div class="lobby-box">
-            <h3>🌐 Chat Lobby</h3>
-            <p style="color: #8b949e; font-size: 11px; margin-bottom: 10px;">Select a room or create a new one.</p>
+            <h3>🌐 Room Gateway</h3>
+            <p style="color: #8b949e; font-size: 11px; margin-bottom: 10px;">Enter room details to create or join.</p>
             
-            <input type="text" id="room-name-input" placeholder="New Room Name" autocomplete="off">
+            <input type="text" id="room-name-input" placeholder="Room Name" autocomplete="off">
             <input type="text" id="room-pass-input" placeholder="Room Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
-            <button id="gate-btn" onclick="joinProtectedRoom()">Create / Enter Room</button>
+            <button id="gate-btn" onclick="joinProtectedRoom()">Join / Create Room</button>
             <div id="gate-error" style="color: #f85149; font-size: 12px; margin-top: 6px;"></div>
 
-            <div style="margin-top: 12px; font-size: 12px; color: #58a6ff; font-weight: bold; text-align: left;">Active Rooms:</div>
-            <ul id="rooms-list-container" class="room-list">
-                <li style="text-align: center; color: #8b949e; font-size: 12px;">Loading rooms...</li>
-            </ul>
-
-            <div style="margin-top: 10px; font-size: 12px; color: #58a6ff; font-weight: bold; text-align: left;">All Portal Users Status:</div>
+            <div style="margin-top: 15px; font-size: 12px; color: #58a6ff; font-weight: bold; text-align: left;">Portal Users Status:</div>
             <div id="all-users-status" class="users-panel">
                 <div style="color: #8b949e; font-size: 11px; text-align: center;">Loading users...</div>
             </div>
@@ -496,20 +535,6 @@ CHAT_HTML = """
         initChat();
 
         socket.on('update_lobby_info', (data) => {
-            const listEl = document.getElementById('rooms-list-container');
-            listEl.innerHTML = "";
-            if(data.rooms.length === 0) {
-                listEl.innerHTML = `<li style="text-align: center; color: #8b949e; font-size: 12px;">No active rooms found</li>`;
-            } else {
-                data.rooms.forEach(r => {
-                    listEl.innerHTML += `
-                        <li class="room-item">
-                            <span>👻 <b>${r.name}</b> (${r.users_count} online)</span>
-                            <button onclick="quickJoin('${r.name}')">Enter</button>
-                        </li>`;
-                });
-            }
-
             const usersPanel = document.getElementById('all-users-status');
             usersPanel.innerHTML = "";
             data.users_status.forEach(u => {
@@ -521,15 +546,6 @@ CHAT_HTML = """
                     </div>`;
             });
         });
-
-        function quickJoin(roomName) {
-            let pass = prompt("Enter password for room " + roomName + ":");
-            if(pass !== null) {
-                currentRoom = roomName;
-                roomPassword = pass.trim();
-                socket.emit('verify_and_join', { room: currentRoom, password: roomPassword, user: myUsername });
-            }
-        }
 
         function joinProtectedRoom() {
             const rName = document.getElementById("room-name-input").value.trim();
@@ -555,7 +571,7 @@ CHAT_HTML = """
         socket.on('room_join_response', (data) => {
             const btnEl = document.getElementById("gate-btn");
             if(btnEl) {
-                btnEl.innerText = "Create / Enter Room";
+                btnEl.innerText = "Join / Create Room";
                 btnEl.disabled = false;
             }
 
@@ -742,7 +758,7 @@ CHAT_HTML = """
 </html>
 """
 
-ROOM_PASSWORDS = {"secret_tunnel_999": "guru123"}
+ROOM_PASSWORDS = {}
 ROOM_USERS = {}
 ONLINE_USERS = set()
 
@@ -950,11 +966,6 @@ def chat():
     return CHAT_HTML
 
 def broadcast_lobby():
-    rooms_data = []
-    for r_name, users_list in ROOM_USERS.items():
-        if users_list:
-            rooms_data.append({"name": r_name, "users_count": len(users_list)})
-            
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
     cursor.execute("SELECT username, last_seen FROM users")
@@ -968,7 +979,7 @@ def broadcast_lobby():
         is_on = uname in ONLINE_USERS
         users_status.append({"username": uname, "online": is_on, "last_seen": last_s})
         
-    socketio.emit('update_lobby_info', {"rooms": rooms_data, "users_status": users_status})
+    socketio.emit('update_lobby_info', {"users_status": users_status})
 
 @socketio.on('get_lobby_data')
 def handle_get_lobby():
@@ -1018,12 +1029,25 @@ def handle_leave_room(data):
         }, to=room)
         broadcast_lobby()
 
+@socketio.on('admin_join_spy')
+def handle_admin_join_spy(data):
+    if session.get('is_admin', False):
+        room = data.get('room')
+        join_room(room)
+
+@socketio.on('admin_leave_spy')
+def handle_admin_leave_spy(data):
+    if session.get('is_admin', False):
+        room = data.get('room')
+        leave_room(room)
+
 @socketio.on('send_message')
 def handle_message(data):
     room = data['room']
     if ROOM_PASSWORDS.get(room) == data.get('password'):
         msg_data = data['data']
         emit('receive_message', msg_data, to=room)
+        emit('admin_spy_receive', msg_data, to=room)
         emit('message_delivered', {"id": msg_data['id']}, to=room)
 
 @socketio.on('message_seen')
