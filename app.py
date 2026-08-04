@@ -564,44 +564,39 @@ CHAT_HTML = """
         }
         initChat();
 
-        function saveRoomToHistory(name, pass) {
-            let history = JSON.parse(localStorage.getItem('ghost_rooms_history') || '{}');
-            history[name] = pass; 
-            localStorage.setItem('ghost_rooms_history', JSON.stringify(history));
+        function saveRoomToHistory(name) {
+            let history = JSON.parse(localStorage.getItem('ghost_rooms_history') || '[]');
+            if (!history.includes(name)) {
+                history.push(name);
+                localStorage.setItem('ghost_rooms_history', JSON.stringify(history));
+            }
             renderJoinedRooms();
         }
 
         function renderJoinedRooms() {
             let historyListEl = document.getElementById('joined-rooms-list');
-            let history = JSON.parse(localStorage.getItem('ghost_rooms_history') || '{}');
-            let roomNames = Object.keys(history);
+            let history = JSON.parse(localStorage.getItem('ghost_rooms_history') || '[]');
 
-            if(roomNames.length === 0) {
+            if(history.length === 0) {
                 historyListEl.innerHTML = `<div style="color: #8b949e; font-size: 11px; text-align: center; padding: 5px;">No rooms joined yet</div>`;
                 return;
             }
 
             historyListEl.innerHTML = "";
-            roomNames.forEach(rName => {
+            history.forEach(rName => {
                 historyListEl.innerHTML += `
-                    <div class="room-item" onclick="promptQuickJoin('${rName}')">
+                    <div class="room-item" onclick="quickSelectRoom('${rName}')">
                         <span>👻 ${rName}</span>
-                        <span style="font-size:10px; color:#58a6ff;">Join ➔</span>
+                        <span style="font-size:10px; color:#58a6ff;">Select ➔</span>
                     </div>
                 `;
             });
         }
 
-        function promptQuickJoin(rName) {
-            let history = JSON.parse(localStorage.getItem('ghost_rooms_history') || '{}');
-            let savedPass = history[rName] || "";
-
-            let enteredPass = prompt(`Enter password for room "${rName}":`, savedPass);
-            if (enteredPass !== null) {
-                document.getElementById("room-name-input").value = rName;
-                document.getElementById("room-pass-input").value = enteredPass;
-                joinProtectedRoom();
-            }
+        function quickSelectRoom(rName) {
+            document.getElementById("room-name-input").value = rName;
+            document.getElementById("room-pass-input").value = "";
+            document.getElementById("room-pass-input").focus();
         }
 
         function joinProtectedRoom() {
@@ -633,7 +628,7 @@ CHAT_HTML = """
             }
 
             if(data.status === "success") {
-                saveRoomToHistory(currentRoom, roomPassword); 
+                saveRoomToHistory(currentRoom); 
                 document.getElementById('room-lobby').style.display = 'none';
                 document.getElementById('chat-screen').style.display = 'flex';
                 document.getElementById('room-title').innerText = "👻 " + currentRoom + ` (${data.active_users} online)`;
