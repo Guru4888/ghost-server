@@ -37,6 +37,16 @@ def init_db():
             PRIMARY KEY (owner, contact_username)
         )
     ''')
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS pending_messages (
+            id TEXT PRIMARY KEY,
+            room TEXT,
+            sender TEXT,
+            recipient TEXT,
+            data TEXT,
+            timestamp REAL
+        )
+    ''')
     cursor.execute("SELECT * FROM users WHERE username = 'admin'")
     if not cursor.fetchone():
         cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
@@ -469,11 +479,14 @@ CHAT_HTML = """
         .btn-video { background-color: #8957e5; }
         .btn-e2ee { background-color: #30363d; color: #8b949e; border: 1px solid #484f58; }
         .btn-e2ee.active { background-color: #238636; color: white; border-color: #2ea043; }
+        .btn-autodel { background-color: #30363d; color: #8b949e; border: 1px solid #484f58; }
+        .btn-autodel.active { background-color: #d29922; color: #0d1117; border-color: #e3b341; font-weight: bold; }
         .btn-admin { background-color: #d29922; display: none; color: #0d1117; }
         .btn-logout-manual { background-color: #da3633; color: white; }
         
         #messages { flex-grow: 1; overflow-y: auto; padding: 15px; background: #0d1117; display: flex; flex-direction: column; gap: 12px; }
-        .msg-card { padding: 6px 10px; max-width: 75%; word-wrap: break-word; font-size: 0.9rem; position: relative; background: #21262d; border-radius: 8px; border: 1px solid #30363d; }
+        .msg-card { padding: 6px 10px; max-width: 75%; word-wrap: break-word; font-size: 0.9rem; position: relative; background: #21262d; border-radius: 8px; border: 1px solid #30363d; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
         .my-msg { align-self: flex-end; background: #1f382b; }
         .other-msg { align-self: flex-start; }
         .user-id { font-size: 0.7em; color: #8b949e; margin-bottom: 2px; display: block; font-weight: bold; }
@@ -568,6 +581,7 @@ CHAT_HTML = """
                 <span id="display-status" class="status-text">● Secure Room Connected</span>
             </div>
             <div class="call-btns">
+                <button id="autodel-btn" class="btn-call btn-autodel active" onclick="toggleAutoDelete()" title="Toggle Auto-Delete after Seen">⏳ON</button>
                 <button id="e2ee-btn" class="btn-call btn-e2ee" onclick="toggleE2EE()">🔐</button>
                 <button class="btn-call btn-audio" onclick="startCall('audio')">📞 Audio</button>
                 <button class="btn-call btn-video" onclick="startCall('video')">📹 Video</button>
@@ -618,8 +632,10 @@ CHAT_HTML = """
         let typingTimeout = null;
         let lastSender = null;
         let isE2EEActive = localStorage.getItem('ghost_e2ee') === 'true';
+        let isAutoDeleteActive = localStorage.getItem('ghost_autodel') !== 'false'; // Default ON
         let currentFacingMode = 'user';
         updateE2EEButtonUI();
+        updateAutoDeleteButtonUI();
         renderJoinedRooms();
 
         async function initChat() {
@@ -640,9 +656,7 @@ CHAT_HTML = """
             try {
                 let res = await fetch('/get-contacts');
                 let data = await res.json();
-                if(res.ok) {
-                    renderContactsList(data.contacts);
-                }
+                if(res.ok) { renderContactsList(data.contacts); }
             } catch(e) {}
         }
 
@@ -698,16 +712,14 @@ CHAT_HTML = """
         }
 
         function startDirectChat(friendName) {
-            // Create a consistent private room name combining both usernames alphabetically
             let users = [myUsername, friendName].sort();
             currentRoom = "private_" + users[0] + "_" + users[1];
             roomPassword = "ghost_secure_direct_pass_999";
-            
             socket.emit('verify_and_join', { room: currentRoom, password: roomPassword, user: myUsername });
         }
 
         function saveRoomToHistory(name) {
-            if(name.startsWith("private_")) return; // Don't show direct private room hashes in manual recent rooms
+            if(name.startsWith("private_")) return;
             let history = JSON.parse(localStorage.getItem('ghost_rooms_history') || '[]');
             if (!history.includes(name)) { history.push(name); localStorage.setItem('ghost_rooms_history', JSON.stringify(history)); }
             renderJoinedRooms();
@@ -750,6 +762,9 @@ CHAT_HTML = """
                 document.getElementById('chat-screen').style.display = 'flex';
                 let displayTitle = currentRoom.startsWith("private_") ? "Direct Secure Chat" : currentRoom;
                 document.getElementById('room-title').innerText = "👻 " + displayTitle + ` (${data.active_users} online)`;
+                
+                // Fetch any offline/pending messages waiting for us
+                socket.emit('fetch_pending_messages', { room: currentRoom, user: myUsername });
             } else {
                 alert(data.message || "Incorrect room password!");
                 document.getElementById('gate-error').innerText = data.message || "Incorrect room password!";
@@ -786,6 +801,25 @@ CHAT_HTML = """
             else { btn.className = "btn-call btn-e2ee"; btn.innerText = "🔐OFF"; }
         }
 
+        function toggleAutoDelete() {
+            isAutoDeleteActive = !isAutoDeleteActive;
+            localStorage.setItem('ghost_autodel', isAutoDeleteActive);
+            updateAutoDeleteButtonUI();
+        }
+
+        function updateAutoDeleteButtonUI() {
+            const btn = document.getElementById('autodel-btn');
+            if (isAutoDeleteActive) { 
+                btn.className = "btn-call btn-autodel active"; 
+                btn.innerText = "⏳ON"; 
+                btn.title = "Auto-Delete After Seen: ON";
+            } else { 
+                btn.className = "btn-call btn-autodel"; 
+                btn.innerText = "⏳OFF"; 
+                btn.title = "Auto-Delete After Seen: OFF (Safe Mode)";
+            }
+        }
+
         function encryptText(text) { return !isE2EEActive ? text : "ENC[" + btoa(text) + "]"; }
         function decryptText(text) {
             if (text.startsWith("ENC[")) {
@@ -806,7 +840,16 @@ CHAT_HTML = """
             if (text !== "") {
                 socket.emit('stop_typing', { room: currentRoom, user: myUsername });
                 const msgId = 'msg_' + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
-                const messageData = { id: msgId, room: currentRoom, user: myUsername, type: 'text', content: encryptText(text), timestamp: Date.now() };
+                const messageData = { 
+                    id: msgId, 
+                    room: currentRoom, 
+                    sender: myUsername, 
+                    user: myUsername, 
+                    type: 'text', 
+                    content: encryptText(text), 
+                    autodel: isAutoDeleteActive, 
+                    timestamp: Date.now() 
+                };
                 appendMessageToScreen(messageData, true);
                 socket.emit('send_message', { room: currentRoom, password: roomPassword, data: messageData });
                 input.value = "";
@@ -828,10 +871,12 @@ CHAT_HTML = """
                     const messageData = { 
                         id: msgId, 
                         room: currentRoom, 
+                        sender: myUsername,
                         user: myUsername, 
                         type: file.type.startsWith('image/') ? 'image' : 'file', 
                         content: result.file_url, 
                         filename: file.name,
+                        autodel: isAutoDeleteActive,
                         timestamp: Date.now() 
                     };
                     appendMessageToScreen(messageData, true);
@@ -845,7 +890,10 @@ CHAT_HTML = """
 
         function appendMessageToScreen(data, isMine) {
             const msgBox = document.getElementById('messages');
+            if(document.getElementById('card_' + data.id)) return; // Avoid duplication
+
             const msgCard = document.createElement('div');
+            msgCard.id = 'card_' + data.id;
             msgCard.className = `msg-card ${isMine ? 'my-msg' : 'other-msg'}`;
             
             let showUserHeading = (data.user !== lastSender);
@@ -875,7 +923,20 @@ CHAT_HTML = """
             msgBox.scrollTop = msgBox.scrollHeight;
 
             if(!isMine) {
+                // Once the recipient sees the message on screen, acknowledge seen
                 socket.emit('message_seen', { room: currentRoom, password: roomPassword, id: data.id });
+                
+                // If auto-delete feature is enabled for this message, self-destruct 3 seconds after being viewed
+                if (data.autodel) {
+                    setTimeout(() => {
+                        let card = document.getElementById('card_' + data.id);
+                        if(card) {
+                            card.style.transition = "opacity 0.5s ease";
+                            card.style.opacity = "0";
+                            setTimeout(() => card.remove(), 500);
+                        }
+                    }, 3000);
+                }
             }
         }
 
@@ -890,7 +951,22 @@ CHAT_HTML = """
 
         socket.on('message_seen_ack', (data) => {
             let tickEl = document.getElementById('tick_' + data.id);
-            if(tickEl) { tickEl.innerText = "✓✓"; tickEl.className = "ticks seen"; }
+            if(tickEl) { 
+                tickEl.innerText = "✓✓"; 
+                tickEl.className = "ticks seen"; 
+                
+                // If auto-delete feature is enabled for this message, self-destruct sender's message card 3 seconds after partner has seen it
+                if (data.autodel) {
+                    setTimeout(() => {
+                        let card = document.getElementById('card_' + data.id);
+                        if(card) {
+                            card.style.transition = "opacity 0.5s ease";
+                            card.style.opacity = "0";
+                            setTimeout(() => card.remove(), 500);
+                        }
+                    }, 3000);
+                }
+            }
         });
 
         socket.on('display_typing', (data) => {
@@ -950,9 +1026,7 @@ CHAT_HTML = """
             if (!localStream) return;
             currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
             const tracks = localStream.getVideoTracks();
-            if (tracks.length > 0) {
-                tracks[0].stop();
-            }
+            if (tracks.length > 0) { tracks[0].stop(); }
             try {
                 let newStream = await navigator.mediaDevices.getUserMedia({
                     video: { facingMode: currentFacingMode },
@@ -960,14 +1034,10 @@ CHAT_HTML = """
                 });
                 let videoTrack = newStream.getVideoTracks()[0];
                 let sender = peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
-                if (sender) {
-                    sender.replaceTrack(videoTrack);
-                }
+                if (sender) { sender.replaceTrack(videoTrack); }
                 localStream = newStream;
                 document.getElementById('localVideo').srcObject = localStream;
-            } catch(e) {
-                alert("Could not switch camera!");
-            }
+            } catch(e) { alert("Could not switch camera!"); }
         }
 
         socket.on('offer', async (data) => {
@@ -1275,6 +1345,22 @@ def handle_room_verification(data):
     else:
         emit('room_join_response', {"status": "error", "message": "Incorrect room password!"})
 
+@socketio.on('fetch_pending_messages')
+def handle_fetch_pending(data):
+    room = data.get('room')
+    username = data.get('user')
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT id, data FROM pending_messages WHERE room = ? AND recipient = ?", (room, username))
+    rows = cursor.fetchall()
+    for row in rows:
+        msg_id, msg_json = row[0], eval(row[1])
+        emit('receive_message', msg_json, to=request.sid)
+    # Remove delivered pending messages
+    cursor.execute("DELETE FROM pending_messages WHERE room = ? AND recipient = ?", (room, username))
+    conn.commit()
+    conn.close()
+
 @socketio.on('leave_current_room')
 def handle_leave_room(data):
     room = data.get('room')
@@ -1288,8 +1374,7 @@ def handle_leave_room(data):
                 for fpath in ROOM_FILES[room]:
                     try:
                         full_path = os.path.join(app.root_path, fpath.lstrip('/'))
-                        if os.path.exists(full_path):
-                            os.remove(full_path)
+                        if os.path.exists(full_path): os.remove(full_path)
                     except Exception as e:
                         print("Error deleting file:", e)
                 ROOM_FILES.pop(room, None)
@@ -1318,7 +1403,21 @@ def handle_message(data):
         if msg_data.get('type') in ['image', 'file']:
             if room not in ROOM_FILES: ROOM_FILES[room] = []
             ROOM_FILES[room].append(msg_data['content'])
-        emit('receive_message', msg_data, to=room)
+        
+        # Check if recipient is active in room. If not, store in pending messages for offline delivery.
+        active_users_in_room = ROOM_USERS.get(room, [])
+        if len(active_users_in_room) <= 1:
+            if room.startswith("private_"):
+                parts = room.split("_")
+                recipient = parts[2] if parts[1] == msg_data['sender'] else parts[1]
+                conn = sqlite3.connect(DB_FILE)
+                cursor = conn.cursor()
+                cursor.execute("INSERT OR REPLACE INTO pending_messages (id, room, sender, recipient, data, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+                               (msg_data['id'], room, msg_data['sender'], recipient, str(msg_data), msg_data['timestamp']))
+                conn.commit()
+                conn.close()
+        
+        emit('receive_message', msg_data, to=room, include_self=False)
         emit('admin_spy_receive', msg_data, to=room)
         emit('message_delivered', {"id": msg_data['id']}, to=room)
 
@@ -1326,7 +1425,7 @@ def handle_message(data):
 def handle_seen(data):
     room = data['room']
     if ROOM_PASSWORDS.get(room) == data.get('password'):
-        emit('message_seen_ack', {"id": data['id']}, to=room)
+        emit('message_seen_ack', {"id": data['id'], "autodel": data.get('autodel', True)}, to=room)
 
 @socketio.on('typing')
 def handle_typing(data): emit('display_typing', data, to=data['room'], include_self=False)
