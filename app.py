@@ -3,17 +3,12 @@ from flask_socketio import SocketIO, emit, join_room
 import os
 
 app = Flask(__name__)
-app.secret_key = "ghost_super_secret_key_998877"
+app.secret_key = "ghost_super_secret_key_multi_user_998877"
 
+# Registered users database (In-memory dictionary)
 REGISTERED_USERS = {
     "admin": "guru&guru16230"
 }
-
-FAILED_ATTEMPTS = {}
-BLOCKED_IPS = {}
-BLOCKED_USERS = {}
-UNBLOCK_REQUESTS = {}
-USER_SESSIONS = {}
 
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
@@ -44,13 +39,12 @@ LOGIN_HTML = """
         .form-section.active { display: block; }
         .error-msg { color: #f85149; font-size: 13px; margin-top: 5px; }
         .success-msg { color: #3fb950; font-size: 13px; margin-top: 5px; }
-        .unblock-btn-link { background: none; border: none; color: #58a6ff; font-size: 12px; cursor: pointer; text-decoration: underline; margin-top: 12px; width: 100%; }
     </style>
 </head>
 <body>
-    <div class="portal-box" id="main-container">
-        <h2>🔒 Secure Portal</h2>
-        <div class="tabs" id="portal-tabs">
+    <div class="portal-box">
+        <h2>🔒 Multi-User Portal</h2>
+        <div class="tabs">
             <button class="tab-btn active" onclick="switchTab('login', event)">Login</button>
             <button class="tab-btn" onclick="switchTab('register', event)">Register</button>
         </div>
@@ -60,12 +54,11 @@ LOGIN_HTML = """
             <input type="password" id="login-pass" placeholder="Password" autocomplete="new-password">
             <button onclick="loginUser()">Login to Chat</button>
             <div id="loginError" class="error-msg"></div>
-            <button class="unblock-btn-link" onclick="requestUnblockPrompt()">Forgot / Request Unblock Access?</button>
         </div>
 
         <div id="register-form" class="form-section">
             <input type="text" id="reg-user" placeholder="Choose Username" autocomplete="off">
-            <input type="password" id="reg-pass" placeholder="Choose Custom Password" autocomplete="new-password">
+            <input type="password" id="reg-pass" placeholder="Choose Password" autocomplete="new-password">
             <button onclick="registerUser()">Create Account</button>
             <div id="regMsg" class="error-msg"></div>
         </div>
@@ -84,23 +77,6 @@ LOGIN_HTML = """
             }
         }
 
-        async function requestUnblockPrompt() {
-            let u = prompt("Enter your Username or ID to send unblock request to Admin:");
-            if(u && u.trim() !== "") {
-                let res = await fetch('/manual-unblock-request', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: u.trim() })
-                });
-                let data = await res.json();
-                if(data.status === "success") {
-                    alert("✅ Unblock request successfully sent to Admin!");
-                } else {
-                    alert("❌ Failed to send request.");
-                }
-            }
-        }
-
         async function loginUser() {
             const user = document.getElementById("login-user").value.trim();
             const pass = document.getElementById("login-pass").value.trim();
@@ -112,8 +88,6 @@ LOGIN_HTML = """
             let result = await response.json();
             if (response.ok && result.status === "success") {
                 window.location.href = "/chat";
-            } else if (result.status === "blocked") {
-                alert("🚨 Your account or device is blocked by admin security.");
             } else {
                 document.getElementById("loginError").innerText = result.message || "Login failed!";
             }
@@ -151,58 +125,36 @@ ADMIN_HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Admin Panel</title>
     <style>
-        body { background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; user-select: none; }
-        .admin-container { display: flex; gap: 20px; width: 90%; max-width: 900px; }
-        .admin-box { background: #161b22; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 100%; border: 1px solid #30363d; }
-        ul { list-style: none; padding: 0; text-align: left; max-height: 220px; overflow-y: auto; margin-top: 15px; }
+        body { background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
+        .admin-box { background: #161b22; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 400px; border: 1px solid #30363d; }
+        ul { list-style: none; padding: 0; max-height: 250px; overflow-y: auto; margin-top: 15px; }
         li { background: #21262d; padding: 10px; margin-bottom: 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #30363d; font-size: 13px; }
-        button.action-btn { background: #238636; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px; margin-left: 3px; }
-        button.block-btn { background: #da3633; }
-        button.delete-user-btn { background: #8957e5; }
+        button.delete-user-btn { background: #da3633; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; }
         .back-link { display: inline-block; margin-top: 15px; color: #58a6ff; text-decoration: none; font-size: 13px; margin-right: 15px; }
     </style>
 </head>
 <body>
-    <div class="admin-container">
-        <div class="admin-box">
-            <h2>🛡️ Control Panel (Strict 0% Logs Mode)</h2>
-            <p style="color: #8b949e; font-size: 12px;">Unblock & Reset Requests</p>
-            <ul id="requests-list"></ul>
-            <div style="margin-top: 15px; border-top: 1px solid #30363d; padding-top: 10px;">
-                <p style="color: #8b949e; font-size: 12px;">Active Users Management</p>
-                <ul id="users-list"></ul>
-            </div>
-            <a href="/chat" class="back-link">⬅ Chat</a>
-            <a href="/" class="back-link" style="color: #f85149;">Logout</a>
-        </div>
+    <div class="admin-box">
+        <h2>🛡️ Multi-User Control Panel</h2>
+        <p style="color: #8b949e; font-size: 12px;">Active Registered Users</p>
+        <ul id="users-list"></ul>
+        <a href="/chat" class="back-link">⬅ Chat</a>
+        <a href="/logout" class="back-link" style="color: #f85149;">Logout</a>
     </div>
 
     <script>
-        async function fetchAdminData() {
+        async function fetchUsers() {
             try {
-                let resReq = await fetch('/get-unblock-requests');
-                let dataReq = await resReq.json();
-                let reqListEl = document.getElementById('requests-list');
-                reqListEl.innerHTML = dataReq.requests.length === 0 ? "<p style='color: #8b949e; text-align:center; font-size:12px;'>No pending requests.</p>" : "";
-                dataReq.requests.forEach(req => {
-                    reqListEl.innerHTML += `<li><div><b>👤 ${req.username}</b></div> <button class="action-btn" onclick="approveUnblock('${req.username}', '${req.ip}')">Unblock</button></li>`;
-                });
-
                 let resUsr = await fetch('/get-all-users');
                 let dataUsr = await resUsr.json();
                 let usrListEl = document.getElementById('users-list');
                 usrListEl.innerHTML = "";
                 dataUsr.users.forEach(u => {
-                    if(u !== 'admin') {
-                        usrListEl.innerHTML += `
-                            <li>
-                                <span>👤 ${u}</span>
-                                <div>
-                                    <button class="action-btn block-btn" onclick="instantBlock('${u}')">Block</button>
-                                    <button class="action-btn delete-user-btn" onclick="deleteUser('${u}')">🗑️ Delete</button>
-                                </div>
-                            </li>`;
-                    }
+                    usrListEl.innerHTML += `
+                        <li>
+                            <span>👤 ${u}</span>
+                            ${u !== 'admin' ? `<button class="delete-user-btn" onclick="deleteUser('${u}')">Delete</button>` : '<span style="color:#8b949e; font-size:11px;">Protected</span>'}
+                        </li>`;
                 });
             } catch(e) {}
         }
@@ -216,23 +168,11 @@ ADMIN_HTML = """
                     body: JSON.stringify({ username: username, admin_password: adminPass })
                 });
                 let data = await res.json();
-                if (data.status === "success") { alert("User deleted!"); fetchAdminData(); }
+                if (data.status === "success") { alert("User deleted!"); fetchUsers(); }
                 else { alert(data.message || "Failed!"); }
             }
         }
-
-        async function approveUnblock(username, ip) {
-            await fetch('/approve-unblock', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: username, ip: ip }) });
-            fetchAdminData();
-        }
-
-        async function instantBlock(username) {
-            await fetch('/instant-block', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: username }) });
-            fetchAdminData();
-        }
-
-        fetchAdminData();
-        setInterval(fetchAdminData, 4000);
+        fetchUsers();
     </script>
 </body>
 </html>
@@ -276,9 +216,9 @@ CHAT_HTML = """
 <body>
     <div id="room-modal">
         <div class="modal-box">
-            <h2>🔑 Access Reserved Room</h2>
+            <h2>🔑 Join Chat Room</h2>
             <input type="text" id="room-name" placeholder="Room Name" autocomplete="off" style="margin-bottom:10px;">
-            <input type="password" id="room-pass" placeholder="Password" autocomplete="new-password" style="margin-bottom:10px;">
+            <input type="password" id="room-pass" placeholder="Room Password" autocomplete="new-password" style="margin-bottom:10px;">
             <button class="btn-send" style="width: 100%;" onclick="joinReservedRoom()">Enter Room</button>
         </div>
     </div>
@@ -318,33 +258,19 @@ CHAT_HTML = """
         let isE2EEActive = localStorage.getItem('ghost_e2ee') === 'true';
         updateE2EEButtonUI();
 
-        socket.on('connect', () => {
-            console.log("Connected to Socket.io Server, ID:", socket.id);
-        });
-
-        document.addEventListener('contextmenu', event => event.preventDefault());
-
-        async function triggerInstantLogout() {
-            try {
-                navigator.sendBeacon('/logout-session');
-                localStorage.clear();
-                sessionStorage.clear();
-            } catch(e) {}
-        }
-
-        window.addEventListener("pagehide", triggerInstantLogout);
-        window.addEventListener("beforeunload", triggerInstantLogout);
-        document.addEventListener("visibilitychange", () => {
-            if (document.hidden) triggerInstantLogout();
-        });
-
         async function initChat() {
             try {
-                let res = await fetch('/check-admin-session');
+                let res = await fetch('/check-session');
                 let data = await res.json();
-                myUsername = data.username;
-                if(data.is_admin) { document.getElementById('admin-panel-btn').style.display = 'inline-block'; }
-            } catch(e) {}
+                if(data.authenticated) {
+                    myUsername = data.username;
+                    if(data.is_admin) { document.getElementById('admin-panel-btn').style.display = 'inline-block'; }
+                } else {
+                    window.location.href = "/";
+                }
+            } catch(e) {
+                window.location.href = "/";
+            }
         }
         initChat();
 
@@ -381,7 +307,6 @@ CHAT_HTML = """
                 socket.emit('join_room', { room: currentRoom, user: myUsername });
                 document.getElementById('room-modal').style.display = 'none';
                 document.getElementById('display-room-id').innerText = "Room: " + room;
-                console.log("Joined room:", currentRoom);
             } else {
                 alert("Please enter both Room Name and Password!");
             }
@@ -395,17 +320,14 @@ CHAT_HTML = """
                     alert("Error: You have not joined any room yet!");
                     return;
                 }
-                console.log("Sending message to room:", currentRoom);
                 socket.emit('send_message', { room: currentRoom, user: myUsername, msg: encryptText(text), timestamp: Date.now() });
                 input.value = "";
             }
         }
 
         socket.on('receive_message', (data) => {
-            console.log("Received message:", data);
             const now = Date.now();
             const msgTimestamp = data.timestamp || now;
-            
             const msgBox = document.getElementById('messages');
             const isMe = data.user === myUsername;
             const msgCard = document.createElement('div');
@@ -498,78 +420,64 @@ CHAT_HTML = """
 """
 
 @app.route('/')
-def home(): return LOGIN_HTML
+def home():
+    if session.get('authenticated'):
+        return redirect(url_for('chat'))
+    return LOGIN_HTML
 
-@app.route('/logout-session', methods=['POST'])
-def logout_session():
+@app.route('/logout')
+def logout():
     session.clear()
-    return jsonify({"status": "logged_out"})
-
-@app.route('/manual-unblock-request', methods=['POST'])
-def manual_unblock_request():
-    data = request.json
-    username = data.get('username', '').strip()
-    if username:
-        UNBLOCK_REQUESTS["manual_" + username] = {"username": username, "status": "Pending"}
-        return jsonify({"status": "success"})
-    return jsonify({"status": "error", "message": "Invalid username"}), 400
+    return redirect(url_for('home'))
 
 @app.route('/register', methods=['POST'])
 def register():
     data = request.json
     u, p = data.get('username', '').strip(), data.get('password', '').strip()
-    if not u or not p: return jsonify({"status": "error", "message": "Fields required!"}), 400
-    if u in REGISTERED_USERS or u in BLOCKED_USERS: return jsonify({"status": "error", "message": "Username exists or is blocked!"}), 400
+    if not u or not p: 
+        return jsonify({"status": "error", "message": "Fields required!"}), 400
+    if u in REGISTERED_USERS: 
+        return jsonify({"status": "error", "message": "Username already exists!"}), 400
     REGISTERED_USERS[u] = p
     return jsonify({"status": "success"})
 
 @app.route('/login', methods=['POST'])
 def login():
-    ip = request.headers.get('X-Forwarded-For', request.remote_addr)
     data = request.json
     u, p = data.get('username', '').strip(), data.get('password', '').strip()
 
-    if ip in BLOCKED_IPS or u in BLOCKED_USERS:
-        return jsonify({"status": "blocked"}), 403
-
     if u in REGISTERED_USERS and REGISTERED_USERS[u] == p:
-        FAILED_ATTEMPTS[ip] = 0
         session['authenticated'] = True
         session['user'] = u
         session['is_admin'] = (u == "admin")
-        USER_SESSIONS[u] = ip
         return jsonify({"status": "success"})
     else:
-        FAILED_ATTEMPTS[ip] = FAILED_ATTEMPTS.get(ip, 0) + 1
-        if FAILED_ATTEMPTS[ip] >= 5:
-            BLOCKED_IPS[ip] = True
-            if u: BLOCKED_USERS[u] = True
-            UNBLOCK_REQUESTS[ip] = {"username": u or "Unknown", "status": "Pending"}
-            return jsonify({"status": "blocked"}), 403
         return jsonify({"status": "error", "message": "Invalid credentials!"}), 401
 
-@app.route('/check-admin-session')
-def check_admin_session():
-    return jsonify({"is_admin": session.get('is_admin', False), "username": session.get('user', 'Guest')})
+@app.route('/check-session')
+def check_session():
+    return jsonify({
+        "authenticated": session.get('authenticated', False),
+        "is_admin": session.get('is_admin', False),
+        "username": session.get('user', 'Guest')
+    })
 
 @app.route('/admin-panel-guru')
 def admin_panel():
-    if not session.get('is_admin', False): return redirect(url_for('home'))
+    if not session.get('is_admin', False): 
+        return redirect(url_for('home'))
     return ADMIN_HTML
-
-@app.route('/get-unblock-requests')
-def get_unblock_requests():
-    if not session.get('is_admin', False): return jsonify({"requests": []}), 403
-    return jsonify({"requests": [{"ip": ip, "username": info["username"]} for ip, info in UNBLOCK_REQUESTS.items()]})
 
 @app.route('/get-all-users')
 def get_all_users():
-    if not session.get('is_admin', False): return jsonify({"users": []}), 403
+    if not session.get('is_admin', False): 
+        return jsonify({"users": []}), 403
     return jsonify({"users": list(REGISTERED_USERS.keys())})
 
 @app.route('/delete-user', methods=['POST'])
 def delete_user():
-    if not session.get('is_admin', False): return jsonify({"status": "unauthorized"}), 403
+    if not session.get('is_admin', False): 
+        return jsonify({"status": "unauthorized"}), 403
     data = request.json
     target_user = data.get('username')
     admin_pass = data.get('admin_password')
@@ -577,36 +485,13 @@ def delete_user():
         return jsonify({"status": "error", "message": "Incorrect Admin Password!"}), 401
     if target_user in REGISTERED_USERS and target_user != "admin":
         del REGISTERED_USERS[target_user]
-        BLOCKED_USERS.pop(target_user, None)
         return jsonify({"status": "success"})
     return jsonify({"status": "error", "message": "User not found!"}), 404
 
-@app.route('/instant-block', methods=['POST'])
-def instant_block():
-    if not session.get('is_admin', False): return jsonify({"status": "unauthorized"}), 403
-    u = request.json.get('username')
-    BLOCKED_USERS[u] = True
-    UNBLOCK_REQUESTS["manual_" + u] = {"username": u, "status": "Pending"}
-    return jsonify({"status": "success"})
-
-@app.route('/approve-unblock', methods=['POST'])
-def approve_unblock():
-    if not session.get('is_admin', False): return jsonify({"status": "unauthorized"}), 403
-    data = request.json
-    ip = data.get('ip')
-    username = data.get('username')
-    if ip:
-        BLOCKED_IPS.pop(ip, None)
-        UNBLOCK_REQUESTS.pop(ip, None)
-    if username:
-        BLOCKED_USERS.pop(username, None)
-        UNBLOCK_REQUESTS.pop("manual_" + username, None)
-    return jsonify({"status": "success"})
-
 @app.route('/chat')
 def chat():
-    ip = request.headers.get('X-Forwarded-For', request.remote_addr)
-    if ip in BLOCKED_IPS or not session.get('authenticated'): return redirect(url_for('home'))
+    if not session.get('authenticated'): 
+        return redirect(url_for('home'))
     return CHAT_HTML
 
 @socketio.on('join_room')
