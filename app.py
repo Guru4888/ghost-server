@@ -207,7 +207,7 @@ ADMIN_HTML = """
     <style>
         body { background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
         .admin-box { background: #161b22; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 480px; border: 1px solid #30363d; max-height: 90vh; overflow-y: auto; }
-        ul { list-style: none; padding: 0; max-height: 150px; overflow-y: auto; margin-top: 10px; margin-bottom: 20px; }
+        ul { list-style: none; padding: 0; max-height: 130px; overflow-y: auto; margin-top: 5px; margin-bottom: 15px; }
         li { background: #21262d; padding: 10px; margin-bottom: 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #30363d; font-size: 13px; }
         .btn-group { display: flex; gap: 5px; }
         button.action-btn { background: #da3633; color: white; border: none; padding: 5px 8px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px; }
@@ -215,8 +215,8 @@ ADMIN_HTML = """
         button.unblock-btn { background: #238636; }
         button.monitor-btn { background: #1f6feb; }
         .back-link { display: inline-block; margin-top: 15px; color: #58a6ff; text-decoration: none; font-size: 13px; margin-right: 15px; }
-        .section-title { font-size: 14px; color: #58a6ff; margin-bottom: 5px; font-weight: bold; }
-        #monitor-section { margin-top: 15px; background: #010409; border: 1px solid #30363d; border-radius: 6px; padding: 10px; display: none; }
+        .section-title { font-size: 13px; color: #58a6ff; margin-bottom: 5px; font-weight: bold; }
+        #monitor-section { margin-top: 10px; background: #010409; border: 1px solid #30363d; border-radius: 6px; padding: 10px; display: none; }
         #monitor-messages { height: 120px; overflow-y: auto; background: #0d1117; padding: 8px; border-radius: 4px; font-size: 12px; margin-top: 8px; }
     </style>
 </head>
@@ -231,7 +231,12 @@ ADMIN_HTML = """
         <div class="section-title" style="color: #f85149;">🚫 Blocked Users List</div>
         <ul id="blocked-list"></ul>
 
-        <div class="section-title" style="color: #58a6ff;">🔍 Spy / Monitor Active Chat Rooms</div>
+        <div class="section-title" style="color: #58a6ff;">📡 Active Chat Rooms (Live Monitor)</div>
+        <ul id="active-rooms-list">
+            <li style="justify-content:center; color:#8b949e;">No active rooms right now</li>
+        </ul>
+
+        <div class="section-title" style="color: #58a6ff;">🔍 Spy / Monitor Room Manual</div>
         <div style="display: flex; gap: 5px; margin-top: 5px;">
             <input type="text" id="spy-room-input" placeholder="Enter Room Name to Spy" style="flex:1; padding:6px; background:#010409; border:1px solid #30363d; color:white; border-radius:4px; font-size:12px;" autocomplete="off">
             <button class="action-btn monitor-btn" onclick="startSpying()">Read Chats</button>
@@ -350,11 +355,36 @@ ADMIN_HTML = """
             document.getElementById('monitor-section').style.display = 'none';
         }
 
+        function spySpecificRoom(roomName) {
+            document.getElementById('spy-room-input').value = roomName;
+            startSpying();
+        }
+
+        socket.on('admin_rooms_list', (rooms) => {
+            let listEl = document.getElementById('active-rooms-list');
+            if(rooms.length === 0) {
+                listEl.innerHTML = `<li style="justify-content:center; color:#8b949e;">No active rooms right now</li>`;
+                return;
+            }
+            listEl.innerHTML = "";
+            rooms.forEach(r => {
+                listEl.innerHTML += `
+                    <li>
+                        <span>👻 ${r.room} <b style="color:#3fb950;">(${r.users} users)</b></span>
+                        <button class="action-btn monitor-btn" onclick="spySpecificRoom('${r.room}')">Read Chats</button>
+                    </li>`;
+            });
+        });
+
         socket.on('admin_spy_receive', (data) => {
             let box = document.getElementById('monitor-messages');
             box.innerHTML += `<div><b>${data.user}:</b> ${data.msg}</div>`;
             box.scrollTop = box.scrollHeight;
         });
+
+        setInterval(() => {
+            socket.emit('get_admin_rooms');
+        }, 3000);
 
         fetchDashboard();
     </script>
@@ -375,7 +405,6 @@ CHAT_HTML = """
         body { background-color: #0d1117; color: #ffffff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; user-select: none; }
         #security-warning { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 9999; justify-content: center; align-items: center; color: #f85149; font-size: 1.5rem; font-weight: bold; text-align: center; padding: 20px; }
         
-        /* Room Lobby Section */
         #room-lobby { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0d1117; z-index: 999; display: flex; justify-content: center; align-items: center; }
         .lobby-box { background: #161b22; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 380px; text-align: center; border: 1px solid #30363d; max-height: 90vh; overflow-y: auto; }
         .lobby-box input { width: 100%; padding: 10px; margin: 6px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
@@ -388,7 +417,6 @@ CHAT_HTML = """
         .room-item { background: #21262d; padding: 8px 12px; margin-bottom: 6px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #30363d; font-size: 13px; cursor: pointer; }
         .room-item:hover { border-color: #58a6ff; }
 
-        /* Chat Screen */
         #chat-screen { display: none; width: 95%; max-width: 500px; height: 85vh; background: #161b22; border-radius: 12px; flex-direction: column; border: 1px solid #30363d; overflow: hidden; }
         .top-bar { background: #21262d; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; }
         .top-bar h3 { margin: 0; font-size: 0.9rem; color: #58a6ff; }
@@ -421,7 +449,6 @@ CHAT_HTML = """
 <body>
     <div id="security-warning">⚠️ Screen Recording / Capture Detected!<br>Access Restricted for Security.</div>
 
-    <!-- Room Lobby Section -->
     <div id="room-lobby">
         <div class="lobby-box">
             <h3>🌐 Room Gateway</h3>
@@ -432,7 +459,6 @@ CHAT_HTML = """
             <button id="gate-btn" onclick="joinProtectedRoom()">Join / Create Room</button>
             <div id="gate-error" style="color: #f85149; font-size: 12px; margin-top: 6px;"></div>
 
-            <!-- Joined Rooms History List -->
             <div class="rooms-history">
                 <h4>📂 Recently Joined Rooms</h4>
                 <div id="joined-rooms-list" style="max-height: 140px; overflow-y: auto;">
@@ -1028,12 +1054,21 @@ def handle_leave_room(data):
     username = data.get('user')
     if room in ROOM_USERS and username in ROOM_USERS[room]:
         ROOM_USERS[room].remove(username)
+        if len(ROOM_USERS[room]) == 0:
+            ROOM_USERS.pop(room, None)
+            ROOM_PASSWORDS.pop(room, None)
         leave_room(room)
         emit('room_users_update', {
             "room": room, 
-            "active_users": len(ROOM_USERS[room]), 
-            "users": ROOM_USERS[room]
+            "active_users": len(ROOM_USERS.get(room, [])), 
+            "users": ROOM_USERS.get(room, [])
         }, to=room)
+
+@socketio.on('get_admin_rooms')
+def handle_get_admin_rooms():
+    if session.get('is_admin', False):
+        active_rooms = [{"room": r, "users": len(users)} for r, users in ROOM_USERS.items() if len(users) > 0]
+        emit('admin_rooms_list', active_rooms)
 
 @socketio.on('admin_join_spy')
 def handle_admin_join_spy(data):
