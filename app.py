@@ -22,7 +22,6 @@ def init_db():
             username TEXT PRIMARY KEY
         )
     ''')
-    # Default admin check
     cursor.execute("SELECT * FROM users WHERE username = 'admin'")
     if not cursor.fetchone():
         cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", ("admin", "guru&guru16230"))
@@ -74,7 +73,7 @@ LOGIN_HTML = """
         <div id="login-form" class="form-section active">
             <input type="text" id="login-user" placeholder="Username" autocomplete="off">
             <input type="text" id="login-pass" placeholder="Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
-            <button onclick="loginUser()">Login to Chat</button>
+            <button onclick="loginUser()">Login to Portal</button>
             <div id="loginError" class="error-msg"></div>
         </div>
 
@@ -268,10 +267,16 @@ CHAT_HTML = """
         * { box-sizing: border-box; }
         body { background-color: #0d1117; color: #ffffff; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; user-select: none; }
         #security-warning { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 9999; justify-content: center; align-items: center; color: #f85149; font-size: 1.5rem; font-weight: bold; text-align: center; padding: 20px; }
-        #room-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); display: flex; justify-content: center; align-items: center; z-index: 999; }
-        .modal-box { background: #161b22; padding: 25px; border-radius: 12px; text-align: center; box-shadow: 0 4px 20px rgba(0,0,0,0.7); border: 1px solid #30363d; width: 90%; max-width: 400px; }
+        
+        /* Room Password Gate Overlay */
+        #room-gate { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0d1117; z-index: 999; display: flex; justify-content: center; align-items: center; }
+        .gate-box { background: #161b22; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 320px; text-align: center; border: 1px solid #30363d; }
+        .gate-box input { width: 100%; padding: 12px; margin: 8px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
         .secure-pass { -webkit-text-security: disc; text-security: disc; }
-        #chat-screen { display: flex; width: 95%; max-width: 500px; height: 85vh; background: #161b22; border-radius: 12px; flex-direction: column; border: 1px solid #30363d; overflow: hidden; }
+        .gate-box button { width: 100%; padding: 12px; background: #1f6feb; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .gate-box button:hover { background: #388bfd; }
+
+        #chat-screen { display: none; width: 95%; max-width: 500px; height: 85vh; background: #161b22; border-radius: 12px; flex-direction: column; border: 1px solid #30363d; overflow: hidden; }
         .top-bar { background: #21262d; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; }
         .top-bar h3 { margin: 0; font-size: 0.9rem; color: #58a6ff; }
         .status-text { font-size: 0.65rem; color: #8b949e; display: block; }
@@ -303,12 +308,15 @@ CHAT_HTML = """
 <body>
     <div id="security-warning">⚠️ Screen Recording / Capture Detected!<br>Access Restricted for Security.</div>
 
-    <div id="room-modal">
-        <div class="modal-box" autocomplete="off">
-            <h2>🔑 Join Chat Room</h2>
-            <input type="text" id="room-name" placeholder="Room Name" autocomplete="off" style="margin-bottom:10px;">
-            <input type="text" id="room-pass" placeholder="Room Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');" style="margin-bottom:10px;">
-            <button class="btn-send" style="width: 100%;" onclick="joinReservedRoom()">Enter Room</button>
+    <!-- Room Gate Popup (Password Protection) -->
+    <div id="room-gate">
+        <div class="gate-box">
+            <h3>🔐 Enter Secret Room</h3>
+            <p style="color: #8b949e; font-size: 11px; margin-bottom: 10px;">Provide room name & password to enter.</p>
+            <input type="text" id="room-name-input" placeholder="Room Name" autocomplete="off">
+            <input type="text" id="room-pass-input" placeholder="Room Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
+            <button onclick="joinProtectedRoom()">Enter Room</button>
+            <div id="gate-error" style="color: #f85149; font-size: 12px; margin-top: 8px;"></div>
         </div>
     </div>
 
@@ -321,8 +329,8 @@ CHAT_HTML = """
     <div id="chat-screen">
         <div class="top-bar">
             <div>
-                <h3>👻 Ghost</h3>
-                <span id="display-status" class="status-text">● Online</span>
+                <h3 id="room-title">👻 Ghost Tunnel</h3>
+                <span id="display-status" class="status-text">● Secure Room Connected</span>
             </div>
             <div class="call-btns">
                 <button id="e2ee-btn" class="btn-call btn-e2ee" onclick="toggleE2EE()">🔐</button>
@@ -379,6 +387,7 @@ CHAT_HTML = """
         const socket = io({ reconnection: false });
 
         let currentRoom = "";
+        let roomPassword = "";
         let myUsername = "User";
         let typingTimeout = null;
         let lastSender = null;
@@ -398,6 +407,33 @@ CHAT_HTML = """
             } catch(e) { window.location.href = "/"; }
         }
         initChat();
+
+        function joinProtectedRoom() {
+            const rName = document.getElementById("room-name-input").value.trim();
+            const rPass = document.getElementById("room-pass-input").value.trim();
+            const errEl = document.getElementById("gate-error");
+
+            if(!rName || !rPass) {
+                errEl.innerText = "Please enter both room name and password!";
+                return;
+            }
+
+            currentRoom = rName;
+            roomPassword = rPass;
+
+            // Verify room password via backend socket or direct join request
+            socket.emit('verify_and_join', { room: currentRoom, password: roomPassword, user: myUsername });
+        }
+
+        socket.on('room_join_response', (data) => {
+            if(data.status === "success") {
+                document.getElementById('room-gate').style.display = 'none';
+                document.getElementById('chat-screen').style.display = 'flex';
+                document.getElementById('room-title').innerText = "👻 " + currentRoom;
+            } else {
+                document.getElementById('gate-error').innerText = data.message || "Incorrect room password!";
+            }
+        });
 
         function toggleE2EE() {
             isE2EEActive = !isE2EEActive;
@@ -419,20 +455,7 @@ CHAT_HTML = """
             return text;
         }
 
-        function joinReservedRoom() {
-            const room = document.getElementById('room-name').value.trim();
-            const pass = document.getElementById('room-pass').value.trim();
-            if (room && pass) {
-                currentRoom = room + "_" + pass;
-                socket.emit('join_room', { room: currentRoom, user: myUsername });
-                document.getElementById('room-modal').style.display = 'none';
-            } else {
-                alert("Please enter both Room Name and Password!");
-            }
-        }
-
         function notifyTyping() {
-            if (!currentRoom) return;
             socket.emit('typing', { room: currentRoom, user: myUsername });
             clearTimeout(typingTimeout);
             typingTimeout = setTimeout(() => {
@@ -444,7 +467,6 @@ CHAT_HTML = """
             const input = document.getElementById('msg-input');
             const text = input.value.trim();
             if (text !== "") {
-                if (!currentRoom) { alert("Join room first!"); return; }
                 socket.emit('stop_typing', { room: currentRoom, user: myUsername });
                 const msgId = 'msg_' + Date.now() + "_" + Math.random().toString(36).substring(2, 7);
                 const messageData = { 
@@ -455,7 +477,7 @@ CHAT_HTML = """
                     timestamp: Date.now() 
                 };
                 appendMessageToScreen(messageData, true);
-                socket.emit('send_message', messageData);
+                socket.emit('send_message', { room: currentRoom, password: roomPassword, data: messageData });
                 input.value = "";
             }
         }
@@ -487,7 +509,7 @@ CHAT_HTML = """
             msgBox.scrollTop = msgBox.scrollHeight;
 
             if(!isMine) {
-                socket.emit('message_seen', { room: currentRoom, id: data.id });
+                socket.emit('message_seen', { room: currentRoom, password: roomPassword, id: data.id });
             }
 
             let remainingLife = 60000 - (now - msgTimestamp);
@@ -529,7 +551,6 @@ CHAT_HTML = """
         let localStream, peerConnection;
         const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
         async function startCall(type) {
-            if (!currentRoom) { alert("Join room first!"); return; }
             document.getElementById('video-container').style.display = 'flex';
             try {
                 localStream = await navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true });
@@ -537,10 +558,10 @@ CHAT_HTML = """
                 peerConnection = new RTCPeerConnection(servers);
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
                 peerConnection.ontrack = e => document.getElementById('remoteVideo').srcObject = e.streams[0];
-                peerConnection.onicecandidate = e => { if (e.candidate) socket.emit('ice_candidate', { room: currentRoom, candidate: e.candidate }); };
+                peerConnection.onicecandidate = e => { if (e.candidate) socket.emit('ice_candidate', { room: currentRoom, password: roomPassword, candidate: e.candidate }); };
                 let offer = await peerConnection.createOffer();
                 await peerConnection.setLocalDescription(offer);
-                socket.emit('offer', { room: currentRoom, offer: offer });
+                socket.emit('offer', { room: currentRoom, password: roomPassword, offer: offer });
             } catch (err) { alert("Call error"); endCall(); }
         }
         socket.on('offer', async (data) => {
@@ -552,11 +573,11 @@ CHAT_HTML = """
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
             } catch(e){}
             peerConnection.ontrack = e => document.getElementById('remoteVideo').srcObject = e.streams[0];
-            peerConnection.onicecandidate = e => { if (e.candidate) socket.emit('ice_candidate', { room: currentRoom, candidate: e.candidate }); };
+            peerConnection.onicecandidate = e => { if (e.candidate) socket.emit('ice_candidate', { room: currentRoom, password: roomPassword, candidate: e.candidate }); };
             await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
             let ans = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(ans);
-            socket.emit('answer', { room: currentRoom, answer: ans });
+            socket.emit('answer', { room: currentRoom, password: roomPassword, answer: ans });
         });
         socket.on('answer', async (data) => { if(peerConnection) await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer)); });
         socket.on('ice_candidate', async (data) => { if (peerConnection && data.candidate) await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate)); });
@@ -569,6 +590,9 @@ CHAT_HTML = """
 </body>
 </html>
 """
+
+# Simple dynamic dictionary for active room passwords validation (RAM based storage for rooms)
+ROOM_PASSWORDS = {"secret_tunnel_999": "guru123"} # Default example room
 
 @app.route('/')
 def home():
@@ -715,20 +739,35 @@ def chat():
         return redirect(url_for('home'))
     return CHAT_HTML
 
-@socketio.on('join_room')
-def handle_join(data):
-    join_room(data['room'])
+# Secure Room Validation Socket Handlers
+@socketio.on('verify_and_join')
+def handle_room_verification(data):
+    room = data.get('room')
+    password = data.get('password')
+    
+    # If room doesn't exist yet, register it dynamically with the entered password on first creation
+    if room not in ROOM_PASSWORDS:
+        ROOM_PASSWORDS[room] = password
+        
+    if ROOM_PASSWORDS.get(room) == password:
+        join_room(room)
+        emit('room_join_response', {"status": "success"})
+    else:
+        emit('room_join_response', {"status": "error", "message": "Incorrect room password!"})
 
 @socketio.on('send_message')
 def handle_message(data):
     room = data['room']
-    emit('receive_message', data, to=room)
-    emit('message_delivered', {"id": data['id']}, to=room)
+    if ROOM_PASSWORDS.get(room) == data.get('password'):
+        msg_data = data['data']
+        emit('receive_message', msg_data, to=room)
+        emit('message_delivered', {"id": msg_data['id']}, to=room)
 
 @socketio.on('message_seen')
 def handle_seen(data):
     room = data['room']
-    emit('message_seen_ack', {"id": data['id']}, to=room)
+    if ROOM_PASSWORDS.get(room) == data.get('password'):
+        emit('message_seen_ack', {"id": data['id']}, to=room)
 
 @socketio.on('typing')
 def handle_typing(data):
@@ -739,11 +778,19 @@ def handle_stop_typing(data):
     emit('hide_typing', data, to=data['room'], include_self=False)
 
 @socketio.on('offer')
-def handle_offer(data): emit('offer', data, to=data['room'], include_self=False)
+def handle_offer(data): 
+    if ROOM_PASSWORDS.get(data['room']) == data.get('password'):
+        emit('offer', data, to=data['room'], include_self=False)
+
 @socketio.on('answer')
-def handle_answer(data): emit('answer', data, to=data['room'], include_self=False)
+def handle_answer(data): 
+    if ROOM_PASSWORDS.get(data['room']) == data.get('password'):
+        emit('answer', data, to=data['room'], include_self=False)
+
 @socketio.on('ice_candidate')
-def handle_ice(data): emit('ice_candidate', data, to=data['room'], include_self=False)
+def handle_ice(data): 
+    if ROOM_PASSWORDS.get(data['room']) == data.get('password'):
+        emit('ice_candidate', data, to=data['room'], include_self=False)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
