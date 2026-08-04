@@ -5,6 +5,7 @@ import sqlite3
 import datetime
 
 app = Flask(__name__)
+# Permanent Secret Key taaki server restart hone par session wipe na ho
 app.secret_key = "ghost_super_secret_key_fixed_persistent_998877"
 
 DB_FILE = "database.db"
@@ -53,6 +54,8 @@ LOGIN_HTML = """
     <title>Calculator & System Portal</title>
     <style>
         body { background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; user-select: none; }
+        
+        /* Calculator Screen Style */
         #calc-screen { display: flex; justify-content: center; align-items: center; width: 100%; height: 100%; position: fixed; top: 0; left: 0; background: #0d1117; z-index: 1000; }
         .calculator { background: #161b22; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 280px; border: 1px solid #30363d; text-align: center; }
         #calc-display { width: 100%; height: 45px; background: #010409; border: 1px solid #30363d; color: #3fb950; font-size: 22px; text-align: right; padding: 5px 10px; margin-bottom: 12px; border-radius: 6px; box-sizing: border-box; }
@@ -63,6 +66,7 @@ LOGIN_HTML = """
         .calc-btn.equal { background: #238636; border-color: #238636; grid-column: span 2; }
         .calc-btn.clear { background: #da3633; border-color: #da3633; }
 
+        /* Portal Box Style */
         #portal-screen { display: none; justify-content: center; align-items: center; width: 100%; height: 100%; }
         .portal-box { background: #161b22; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 330px; text-align: center; border: 1px solid #30363d; }
         .portal-box input, .portal-box select { width: 100%; padding: 10px; margin: 6px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
@@ -79,6 +83,7 @@ LOGIN_HTML = """
     </style>
 </head>
 <body>
+    <!-- Calculator Screen -->
     <div id="calc-screen">
         <div class="calculator">
             <input type="text" id="calc-display" readonly value="0">
@@ -87,18 +92,22 @@ LOGIN_HTML = """
                 <button class="calc-btn" onclick="pressCalc('(')">(</button>
                 <button class="calc-btn" onclick="pressCalc(')')">)</button>
                 <button class="calc-btn operator" onclick="pressCalc('/')">/</button>
+                
                 <button class="calc-btn" onclick="pressCalc('7')">7</button>
                 <button class="calc-btn" onclick="pressCalc('8')">8</button>
                 <button class="calc-btn" onclick="pressCalc('9')">9</button>
                 <button class="calc-btn operator" onclick="pressCalc('*')">*</button>
+                
                 <button class="calc-btn" onclick="pressCalc('4')">4</button>
                 <button class="calc-btn" onclick="pressCalc('5')">5</button>
                 <button class="calc-btn" onclick="pressCalc('6')">6</button>
                 <button class="calc-btn operator" onclick="pressCalc('-')">-</button>
+                
                 <button class="calc-btn" onclick="pressCalc('1')">1</button>
                 <button class="calc-btn" onclick="pressCalc('2')">2</button>
                 <button class="calc-btn" onclick="pressCalc('3')">3</button>
                 <button class="calc-btn operator" onclick="pressCalc('+')">+</button>
+                
                 <button class="calc-btn" onclick="pressCalc('0')">0</button>
                 <button class="calc-btn" onclick="pressCalc('.')">.</button>
                 <button class="calc-btn equal" onclick="calculateResult()">=</button>
@@ -106,6 +115,7 @@ LOGIN_HTML = """
         </div>
     </div>
 
+    <!-- Actual Portal Screen -->
     <div id="portal-screen">
         <div class="portal-box" autocomplete="off">
             <h2>🔒 Multi-User Portal</h2>
@@ -164,6 +174,7 @@ LOGIN_HTML = """
         }
 
         function calculateResult() {
+            // Secret Code Trigger: Agar user '786' type karke '=' dabaye toh portal khul jayega
             if(calcInput.trim() === "786") {
                 document.getElementById("calc-screen").style.display = "none";
                 document.getElementById("portal-screen").style.display = "flex";
@@ -915,6 +926,8 @@ ONLINE_USERS = set()
 
 @app.route('/')
 def home():
+    if session.get('authenticated'):
+        return redirect(url_for('chat'))
     return LOGIN_HTML
 
 @app.route('/logout')
