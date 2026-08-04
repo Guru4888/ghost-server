@@ -1,14 +1,31 @@
 from flask import Flask, request, redirect, url_for, session, jsonify
 from flask_socketio import SocketIO, emit, join_room
 import os
+import json
 
 app = Flask(__name__)
 app.secret_key = "ghost_super_secret_key_multi_user_998877"
 
-REGISTERED_USERS = {
-    "admin": "guru&guru16230"
-}
-BLOCKED_USERS = []
+USERS_FILE = "users.json"
+
+def load_users():
+    if os.path.exists(USERS_FILE):
+        try:
+            with open(USERS_FILE, "r") as f:
+                data = json.load(f)
+                return data.get("registered", {"admin": "guru&guru16230"}), data.get("blocked", [])
+        except:
+            pass
+    return {"admin": "guru&guru16230"}, []
+
+def save_users(registered, blocked):
+    try:
+        with open(USERS_FILE, "w") as f:
+            json.dump({"registered": registered, "blocked": blocked}, f)
+    except:
+        pass
+
+REGISTERED_USERS, BLOCKED_USERS = load_users()
 
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', ping_timeout=60, ping_interval=25)
 
@@ -360,6 +377,7 @@ CHAT_HTML = """
         let currentRoom = "";
         let myUsername = "User";
         let typingTimeout = null;
+        let lastSender = null;
         
         let isE2EEActive = localStorage.getItem('ghost_e2ee') === 'true';
         updateE2EEButtonUI();
@@ -446,10 +464,14 @@ CHAT_HTML = """
             const msgCard = document.createElement('div');
             msgCard.className = `msg-card ${isMine ? 'my-msg' : 'other-msg'}`;
             
+            let showUserHeading = (data.user !== lastSender);
+            lastSender = data.user;
+
+            let userHTML = showUserHeading ? `<span class="user-id">${data.user}</span>` : '';
             let ticksHTML = isMine ? `<span id="tick_${data.id}" class="ticks">✓</span>` : '';
             
             msgCard.innerHTML = `
-                <span class="user-id">${data.user}</span>
+                ${userHTML}
                 <div>${decryptText(data.msg)}</div>
                 <div class="msg-footer">
                     <span>${new Date(msgTimestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
@@ -556,15 +578,18 @@ def logout():
 
 @app.route('/register', methods=['POST'])
 def register():
+    global REGISTERED_USERS, BLOCKED_USERS
     data = request.json
     u, p = data.get('username', '').strip(), data.get('password', '').strip()
     if not u or not p: return jsonify({"status": "error"}), 400
-    if u in REGISTERED_USERS: return jsonify({"status": "error"}), 400
+    if u in REGISTERED_USERS: return jsonify({"status": "error", "message": "Username already exists!"}), 400
     REGISTERED_USERS[u] = p
+    save_users(REGISTERED_USERS, BLOCKED_USERS)
     return jsonify({"status": "success"})
 
 @app.route('/login', methods=['POST'])
 def login():
+    global REGISTERED_USERS, BLOCKED_USERS
     data = request.json
     u, p = data.get('username', '').strip(), data.get('password', '').strip()
     if u in BLOCKED_USERS: return jsonify({"status": "error", "message": "User is blocked!"}), 403
@@ -577,6 +602,7 @@ def login():
 
 @app.route('/check-session')
 def check_session():
+    global REGISTERED_USERS, BLOCKED_USERS
     user = session.get('user')
     is_blocked = user in BLOCKED_USERS
     is_deleted = user and user not in REGISTERED_USERS
@@ -600,30 +626,38 @@ def get_admin_data():
 
 @app.route('/block-user', methods=['POST'])
 def block_user():
+    global REGISTERED_USERS, BLOCKED_USERS
     if not session.get('is_admin', False): return jsonify({}), 403
     u = request.json.get('username')
     if u in REGISTERED_USERS and u != "admin" and u not in BLOCKED_USERS:
         BLOCKED_USERS.append(u)
+        save_users(REGISTERED_USERS, BLOCKED_USERS)
     return jsonify({"status": "success"})
 
 @app.route('/unblock-user', methods=['POST'])
 def unblock_user():
+    global REGISTERED_USERS, BLOCKED_USERS
     if not session.get('is_admin', False): return jsonify({}), 403
     u = request.json.get('username')
-    if u in BLOCKED_USERS: BLOCKED_USERS.remove(u)
+    if u in BLOCKED_USERS: 
+        BLOCKED_USERS.remove(u)
+        save_users(REGISTERED_USERS, BLOCKED_USERS)
     return jsonify({"status": "success"})
 
 @app.route('/delete-user', methods=['POST'])
 def delete_user():
+    global REGISTERED_USERS, BLOCKED_USERS
     if not session.get('is_admin', False): return jsonify({}), 403
     u = request.json.get('username')
     if u in REGISTERED_USERS and u != "admin":
         del REGISTERED_USERS[u]
         if u in BLOCKED_USERS: BLOCKED_USERS.remove(u)
+        save_users(REGISTERED_USERS, BLOCKED_USERS)
     return jsonify({"status": "success"})
 
 @app.route('/chat')
 def chat():
+    global REGISTERED_USERS, BLOCKED_USERS
     user = session.get('user')
     if not session.get('authenticated') or user in BLOCKED_USERS or user not in REGISTERED_USERS: 
         return redirect(url_for('home'))
