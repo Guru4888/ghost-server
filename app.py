@@ -56,7 +56,7 @@ def init_db():
 
 init_db()
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', ping_timeout=120, ping_interval=25, logger=True, engineio_logger=True)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', ping_timeout=120, ping_interval=25)
 
 @app.after_request
 def add_security_headers(response):
@@ -758,6 +758,7 @@ CHAT_HTML = """
                 let displayTitle = currentRoom.startsWith("private_") ? "Direct Secure Chat" : currentRoom;
                 document.getElementById('room-title').innerText = "👻 " + displayTitle + ` (${data.active_users} online)`;
                 
+                // Room join hote hi server se pending messages mangwayenge
                 socket.emit('fetch_pending_messages', { room: currentRoom, user: myUsername });
             } else {
                 alert(data.message || "Incorrect room password!");
@@ -874,6 +875,21 @@ CHAT_HTML = """
             }
         });
 
+        // Unique auto-delete timer tracker taaki multiple timers conflict na karein
+        const activeTimers = {};
+
+        function scheduleAutoDelete(msgId) {
+            if (activeTimers[msgId]) return; // Agar timer already chal raha hai toh dubara mat chalao
+            activeTimers[msgId] = setTimeout(() => {
+                let card = document.getElementById('card_' + msgId);
+                if(card) {
+                    card.style.transition = "opacity 0.5s ease";
+                    card.style.opacity = "0";
+                    setTimeout(() => card.remove(), 500);
+                }
+            }, 60000); // Exact 1 Minute (60000ms) baad delete
+        }
+
         function appendMessageToScreen(data, isMine) {
             const msgBox = document.getElementById('messages');
             if(document.getElementById('card_' + data.id)) return;
@@ -887,7 +903,7 @@ CHAT_HTML = """
             let userHTML = showUserHeading ? `<span class="user-id">${data.user}</span>` : '';
             let ticksHTML = isMine ? `<span id="tick_${data.id}" class="ticks">✓</span>` : '';
             
-            // Sender ke paas hamesha Manual Delete button rahega jab tak message delete na ho
+            // Sender ke paas hamesha Manual Delete button rahega
             let deleteBtnHTML = isMine ? `<button onclick="manualDeleteMessage('${data.id}')" style="background:none; border:none; color:#f85149; font-size:10px; cursor:pointer;" title="Delete for Everyone">🗑️ Delete</button>` : '';
 
             let contentHTML = "";
@@ -912,28 +928,20 @@ CHAT_HTML = """
             msgBox.appendChild(msgCard);
             msgBox.scrollTop = msgBox.scrollHeight;
 
+            // Agar message doosre ka hai, toh dekhte hi server ko seen ka signal bhejo aur 1 min ka timer chala do
             if(!isMine) {
                 socket.emit('message_seen', { room: currentRoom, password: roomPassword, id: data.id });
-                
-                // Samne wale ke dekhne par har haal mein 1 minute (60000ms) baad delete ho jayega
-                setTimeout(() => {
-                    let card = document.getElementById('card_' + data.id);
-                    if(card) {
-                        card.style.transition = "opacity 0.5s ease";
-                        card.style.opacity = "0";
-                        setTimeout(() => card.remove(), 500);
-                    }
-                }, 60000);
+                scheduleAutoDelete(data.id);
             }
         }
 
         socket.on('receive_message', (data) => {
-            if (data.user !== myUsername) { appendMessageToScreen(data, false); }
+            appendMessageToScreen(data, data.user === myUsername);
         });
 
         socket.on('message_delivered', (data) => {
             let tickEl = document.getElementById('tick_' + data.id);
-            if(tickEl) { tickEl.innerText = "✓✓"; }
+            if(tickEl && tickEl.innerText === "✓") { tickEl.innerText = "✓✓"; }
         });
 
         socket.on('message_seen_ack', (data) => {
@@ -941,16 +949,8 @@ CHAT_HTML = """
             if(tickEl) { 
                 tickEl.innerText = "✓✓"; 
                 tickEl.className = "ticks seen"; 
-                
-                // Sender ki screen par bhi message dekhne ke 1 minute (60000ms) baad pakka delete ho jayega
-                setTimeout(() => {
-                    let card = document.getElementById('card_' + data.id);
-                    if(card) {
-                        card.style.transition = "opacity 0.5s ease";
-                        card.style.opacity = "0";
-                        setTimeout(() => card.remove(), 500);
-                    }
-                }, 60000);
+                // Sender ki screen par bhi message dekhne ke baad 1 minute ka timer shuru
+                scheduleAutoDelete(data.id);
             }
         });
 
@@ -1336,11 +1336,17 @@ def handle_fetch_pending(data):
     username = data.get('user')
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
+    # Safe evaluation of message JSON string stored in DB
     cursor.execute("SELECT id, data FROM pending_messages WHERE room = ? AND recipient = ?", (room, username))
     rows = cursor.fetchall()
     for row in rows:
-        msg_id, msg_json = row[0], eval(row[1])
-        emit('receive_message', msg_json, to=request.sid)
+        msg_id, msg_str = row[0], row[1]
+        try:
+            import ast
+            msg_json = ast.literal_eval(msg_str)
+            emit('receive_message', msg_json, to=request.sid)
+        except Exception as e:
+            print("Error loading pending message:", e)
     cursor.execute("DELETE FROM pending_messages WHERE room = ? AND recipient = ?", (room, username))
     conn.commit()
     conn.close()
@@ -1389,6 +1395,7 @@ def handle_message(data):
             ROOM_FILES[room].append(msg_data['content'])
         
         active_users_in_room = ROOM_USERS.get(room, [])
+        # Agar room mein partner online nahi hai (yaani sirf sender akela hai ya total users 1 hain), toh database mein pending save kar lo
         if len(active_users_in_room) <= 1:
             if room.startswith("private_"):
                 parts = room.split("_")
