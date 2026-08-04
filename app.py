@@ -5,8 +5,7 @@ import sqlite3
 import datetime
 
 app = Flask(__name__)
-# Permanent Secret Key taaki server restart hone par session wipe na ho
-app.secret_key = "ghost_super_secret_key_fixed_persistent_998877"
+app.secret_key = "ghost_super_secret_key_multi_user_998877"
 
 DB_FILE = "database.db"
 
@@ -51,23 +50,9 @@ LOGIN_HTML = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Calculator & System Portal</title>
+    <title>System Access Portal</title>
     <style>
         body { background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; user-select: none; }
-        
-        /* Calculator Screen Style */
-        #calc-screen { display: flex; justify-content: center; align-items: center; width: 100%; height: 100%; position: fixed; top: 0; left: 0; background: #0d1117; z-index: 1000; }
-        .calculator { background: #161b22; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 280px; border: 1px solid #30363d; text-align: center; }
-        #calc-display { width: 100%; height: 45px; background: #010409; border: 1px solid #30363d; color: #3fb950; font-size: 22px; text-align: right; padding: 5px 10px; margin-bottom: 12px; border-radius: 6px; box-sizing: border-box; }
-        .calc-keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
-        .calc-btn { padding: 12px; background: #21262d; color: white; border: 1px solid #30363d; border-radius: 6px; font-size: 16px; font-weight: bold; cursor: pointer; }
-        .calc-btn:hover { background: #30363d; }
-        .calc-btn.operator { background: #1f6feb; border-color: #1f6feb; }
-        .calc-btn.equal { background: #238636; border-color: #238636; grid-column: span 2; }
-        .calc-btn.clear { background: #da3633; border-color: #da3633; }
-
-        /* Portal Box Style */
-        #portal-screen { display: none; justify-content: center; align-items: center; width: 100%; height: 100%; }
         .portal-box { background: #161b22; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 330px; text-align: center; border: 1px solid #30363d; }
         .portal-box input, .portal-box select { width: 100%; padding: 10px; margin: 6px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
         .secure-pass { -webkit-text-security: disc; text-security: disc; }
@@ -83,114 +68,45 @@ LOGIN_HTML = """
     </style>
 </head>
 <body>
-    <!-- Calculator Screen -->
-    <div id="calc-screen">
-        <div class="calculator">
-            <input type="text" id="calc-display" readonly value="0">
-            <div class="calc-keys">
-                <button class="calc-btn clear" onclick="clearCalc()">C</button>
-                <button class="calc-btn" onclick="pressCalc('(')">(</button>
-                <button class="calc-btn" onclick="pressCalc(')')">)</button>
-                <button class="calc-btn operator" onclick="pressCalc('/')">/</button>
-                
-                <button class="calc-btn" onclick="pressCalc('7')">7</button>
-                <button class="calc-btn" onclick="pressCalc('8')">8</button>
-                <button class="calc-btn" onclick="pressCalc('9')">9</button>
-                <button class="calc-btn operator" onclick="pressCalc('*')">*</button>
-                
-                <button class="calc-btn" onclick="pressCalc('4')">4</button>
-                <button class="calc-btn" onclick="pressCalc('5')">5</button>
-                <button class="calc-btn" onclick="pressCalc('6')">6</button>
-                <button class="calc-btn operator" onclick="pressCalc('-')">-</button>
-                
-                <button class="calc-btn" onclick="pressCalc('1')">1</button>
-                <button class="calc-btn" onclick="pressCalc('2')">2</button>
-                <button class="calc-btn" onclick="pressCalc('3')">3</button>
-                <button class="calc-btn operator" onclick="pressCalc('+')">+</button>
-                
-                <button class="calc-btn" onclick="pressCalc('0')">0</button>
-                <button class="calc-btn" onclick="pressCalc('.')">.</button>
-                <button class="calc-btn equal" onclick="calculateResult()">=</button>
-            </div>
+    <div class="portal-box" autocomplete="off">
+        <h2>🔒 Multi-User Portal</h2>
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('login', event)">Login</button>
+            <button class="tab-btn" onclick="switchTab('register', event)">Register</button>
+            <button class="tab-btn" onclick="switchTab('forgot', event)">Forgot?</button>
         </div>
-    </div>
 
-    <!-- Actual Portal Screen -->
-    <div id="portal-screen">
-        <div class="portal-box" autocomplete="off">
-            <h2>🔒 Multi-User Portal</h2>
-            <div class="tabs">
-                <button class="tab-btn active" onclick="switchTab('login', event)">Login</button>
-                <button class="tab-btn" onclick="switchTab('register', event)">Register</button>
-                <button class="tab-btn" onclick="switchTab('forgot', event)">Forgot?</button>
-            </div>
+        <div id="login-form" class="form-section active">
+            <input type="text" id="login-user" placeholder="Username" autocomplete="off">
+            <input type="text" id="login-pass" placeholder="Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
+            <button onclick="loginUser()">Login to Portal</button>
+            <div id="loginError" class="error-msg"></div>
+        </div>
 
-            <div id="login-form" class="form-section active">
-                <input type="text" id="login-user" placeholder="Username" autocomplete="off">
-                <input type="text" id="login-pass" placeholder="Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
-                <button onclick="loginUser()">Login to Portal</button>
-                <div id="loginError" class="error-msg"></div>
-            </div>
+        <div id="register-form" class="form-section">
+            <input type="text" id="reg-user" placeholder="Choose Username" autocomplete="off">
+            <input type="text" id="reg-pass" placeholder="Choose Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
+            <select id="reg-q">
+                <option value="What is your pet name?">What is your pet name?</option>
+                <option value="What was your first school?">What was your first school?</option>
+                <option value="What is your favorite food?">What is your favorite food?</option>
+            </select>
+            <input type="text" id="reg-ans" placeholder="Security Answer (for reset)" autocomplete="off">
+            <button onclick="registerUser()">Create Account</button>
+            <div id="regMsg" class="error-msg"></div>
+        </div>
 
-            <div id="register-form" class="form-section">
-                <input type="text" id="reg-user" placeholder="Choose Username" autocomplete="off">
-                <input type="text" id="reg-pass" placeholder="Choose Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
-                <select id="reg-q">
-                    <option value="What is your pet name?">What is your pet name?</option>
-                    <option value="What was your first school?">What was your first school?</option>
-                    <option value="What is your favorite food?">What is your favorite food?</option>
-                </select>
-                <input type="text" id="reg-ans" placeholder="Security Answer (for reset)" autocomplete="off">
-                <button onclick="registerUser()">Create Account</button>
-                <div id="regMsg" class="error-msg"></div>
-            </div>
-
-            <div id="forgot-form" class="form-section">
-                <input type="text" id="forgot-user" placeholder="Enter Username" autocomplete="off" onblur="fetchSecQuestion()">
-                <div id="q-display" style="color: #58a6ff; font-size: 11px; margin: 4px 0; text-align: left;"></div>
-                <input type="text" id="forgot-ans" placeholder="Security Answer" autocomplete="off">
-                <input type="text" id="forgot-new-pass" placeholder="New Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
-                <button onclick="resetPassword()" style="background: #d29922; color: #0d1117;">Verify & Reset</button>
-                <div id="forgotMsg" class="error-msg"></div>
-            </div>
+        <div id="forgot-form" class="form-section">
+            <input type="text" id="forgot-user" placeholder="Enter Username" autocomplete="off" onblur="fetchSecQuestion()">
+            <div id="q-display" style="color: #58a6ff; font-size: 11px; margin: 4px 0; text-align: left;"></div>
+            <input type="text" id="forgot-ans" placeholder="Security Answer" autocomplete="off">
+            <input type="text" id="forgot-new-pass" placeholder="New Password" autocomplete="off" class="secure-pass" readonly onfocus="this.removeAttribute('readonly');">
+            <button onclick="resetPassword()" style="background: #d29922; color: #0d1117;">Verify & Reset</button>
+            <div id="forgotMsg" class="error-msg"></div>
         </div>
     </div>
 
     <script>
-        let calcInput = "0";
-
-        function pressCalc(val) {
-            if(calcInput === "0" && val !== '.') {
-                calcInput = val;
-            } else {
-                calcInput += val;
-            }
-            document.getElementById("calc-display").value = calcInput;
-        }
-
-        function clearCalc() {
-            calcInput = "0";
-            document.getElementById("calc-display").value = calcInput;
-        }
-
-        function calculateResult() {
-            // Secret Code Trigger: Agar user '786' type karke '=' dabaye toh portal khul jayega
-            if(calcInput.trim() === "786") {
-                document.getElementById("calc-screen").style.display = "none";
-                document.getElementById("portal-screen").style.display = "flex";
-                return;
-            }
-
-            try {
-                let res = eval(calcInput);
-                calcInput = res.toString();
-                document.getElementById("calc-display").value = calcInput;
-            } catch(e) {
-                document.getElementById("calc-display").value = "Error";
-                calcInput = "0";
-            }
-        }
-
         function switchTab(tab, event) {
             document.querySelectorAll('.form-section').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -302,16 +218,11 @@ ADMIN_HTML = """
         .section-title { font-size: 13px; color: #58a6ff; margin-bottom: 5px; font-weight: bold; }
         #monitor-section { margin-top: 10px; background: #010409; border: 1px solid #30363d; border-radius: 6px; padding: 10px; display: none; }
         #monitor-messages { height: 120px; overflow-y: auto; background: #0d1117; padding: 8px; border-radius: 4px; font-size: 12px; margin-top: 8px; }
-        .header-info { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; padding-bottom: 10px; margin-bottom: 15px; }
-        .user-tag { background: #21262d; padding: 4px 8px; border-radius: 4px; font-size: 12px; color: #3fb950; border: 1px solid #30363d; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="admin-box">
-        <div class="header-info">
-            <h2>🛡️ Admin Panel</h2>
-            <div id="current-user-tag" class="user-tag">👤 Loading...</div>
-        </div>
+        <h2>🛡️ Admin Control Panel</h2>
         <p style="color: #8b949e; font-size: 12px; margin-bottom: 15px;">Total Users: <b id="total-count" style="color:white;">0</b></p>
         
         <div class="section-title">👥 Active Registered Users</div>
@@ -339,9 +250,9 @@ ADMIN_HTML = """
             <div id="monitor-messages"></div>
         </div>
 
-        <div style="margin-top: 15px; display: flex; justify-content: space-between; align-items: center;">
-            <a href="/chat" class="back-link" style="margin-top:0;">⬅ Back to Lobby</a>
-            <a href="/logout" class="back-link" style="color: #f85149; margin-top:0;">🚪 Logout</a>
+        <div style="margin-top: 15px;">
+            <a href="/chat" class="back-link">⬅ Back to Lobby</a>
+            <a href="/logout" class="back-link" style="color: #f85149;">Logout</a>
         </div>
     </div>
 
@@ -349,17 +260,6 @@ ADMIN_HTML = """
     <script>
         const socket = io({ transports: ['polling', 'websocket'] });
         let spyingRoom = null;
-
-        async function fetchUserInfo() {
-            try {
-                let res = await fetch('/check-session', {cache: "no-store"});
-                let data = await res.json();
-                if(data.authenticated) {
-                    document.getElementById('current-user-tag').innerText = "👤 " + data.username;
-                }
-            } catch(e) {}
-        }
-        fetchUserInfo();
 
         async function fetchDashboard() {
             try {
@@ -507,8 +407,6 @@ CHAT_HTML = """
         
         #room-lobby { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: #0d1117; z-index: 999; display: flex; justify-content: center; align-items: center; }
         .lobby-box { background: #161b22; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 380px; text-align: center; border: 1px solid #30363d; max-height: 90vh; overflow-y: auto; }
-        .lobby-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #30363d; padding-bottom: 8px; }
-        .lobby-user-tag { font-size: 11px; color: #3fb950; font-weight: bold; background: #21262d; padding: 3px 6px; border-radius: 4px; border: 1px solid #30363d; }
         .lobby-box input { width: 100%; padding: 10px; margin: 6px 0; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; box-sizing: border-box; outline: none; }
         .secure-pass { -webkit-text-security: disc; text-security: disc; }
         .lobby-box button { width: 100%; padding: 10px; background: #1f6feb; color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; margin-top: 8px; }
@@ -544,8 +442,12 @@ CHAT_HTML = """
         input { width: 100%; padding: 10px; background: #010409; border: 1px solid #30363d; color: white; border-radius: 6px; outline: none; user-select: text; }
         button.btn-send { padding: 10px 18px; background: #238636; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; }
         #typing-indicator { font-size: 0.75rem; color: #3fb950; font-style: italic; height: 15px; }
-        #video-container { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; justify-content: center; align-items: center; flex-direction: column; }
-        video { width: 80%; max-width: 400px; border-radius: 8px; background: black; margin-bottom: 10px; }
+        
+        #video-container { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 1000; justify-content: center; align-items: center; flex-direction: column; }
+        .video-box { position: relative; width: 85%; max-width: 420px; background: #161b22; border-radius: 12px; padding: 15px; border: 1px solid #30363d; display: flex; flex-direction: column; align-items: center; }
+        video { width: 100%; max-height: 300px; border-radius: 8px; background: black; margin-bottom: 12px; object-fit: cover; }
+        #localVideo { display: none; } /* Audio call mein khudka video element hide rahega */
+        .call-control-bar { display: flex; gap: 10px; width: 100%; justify-content: center; margin-top: 5px; }
     </style>
 </head>
 <body>
@@ -553,10 +455,7 @@ CHAT_HTML = """
 
     <div id="room-lobby">
         <div class="lobby-box">
-            <div class="lobby-header">
-                <h3 style="margin:0; font-size: 15px;">🌐 Room Gateway</h3>
-                <div id="lobby-user-tag" class="lobby-user-tag">👤 Loading...</div>
-            </div>
+            <h3>🌐 Room Gateway</h3>
             <p style="color: #8b949e; font-size: 11px; margin-bottom: 10px;">Enter room details to create or join.</p>
             
             <input type="text" id="room-name-input" placeholder="Room Name" autocomplete="off">
@@ -575,10 +474,16 @@ CHAT_HTML = """
         </div>
     </div>
 
+    <!-- Professional Call Screen -->
     <div id="video-container">
-        <video id="localVideo" autoplay playsinline muted></video>
-        <video id="remoteVideo" autoplay playsinline></video>
-        <button class="btn-send" style="background:#da3633;" onclick="endCall()">End Call</button>
+        <div class="video-box">
+            <h4 id="call-status-title" style="color: #58a6ff; margin: 0 0 10px 0; font-size: 1rem;">Secure Call Connected</h4>
+            <video id="localVideo" autoplay playsinline muted></video>
+            <video id="remoteVideo" autoplay playsinline></video>
+            <div class="call-control-bar">
+                <button class="btn-send" style="background:#da3633; width:100%;" onclick="endCall()">🔴 End Call</button>
+            </div>
+        </div>
     </div>
 
     <div id="chat-screen">
@@ -589,11 +494,10 @@ CHAT_HTML = """
             </div>
             <div class="call-btns">
                 <button id="e2ee-btn" class="btn-call btn-e2ee" onclick="toggleE2EE()">🔐</button>
-                <button class="btn-call btn-audio" onclick="startCall('audio')">📞</button>
-                <button class="btn-call btn-video" onclick="startCall('video')">📹</button>
+                <button class="btn-call btn-audio" onclick="startCall('audio')">📞 Audio</button>
+                <button class="btn-call btn-video" onclick="startCall('video')">📹 Video</button>
                 <button id="admin-panel-btn" class="btn-call btn-admin" onclick="window.location.href='/admin-panel-guru'">🛡️</button>
-                <button class="btn-call btn-logout-manual" onclick="returnToLobby()" title="Back to Lobby">⬅ Lobby</button>
-                <button class="btn-call btn-logout-manual" onclick="instantLogout()" title="Logout">🚪</button>
+                <button class="btn-call btn-logout-manual" onclick="returnToLobby()">🔙 Lobby</button>
             </div>
         </div>
         <div id="messages"></div>
@@ -619,13 +523,20 @@ CHAT_HTML = """
             };
         }
 
+        document.addEventListener("visibilitychange", async () => {
+            if (document.hidden) {
+                try { await fetch('/logout', { method: 'GET', cache: "no-store" }); } catch(e) {}
+                wipeAndExit();
+            }
+        });
+
         async function instantLogout() {
             try { await fetch('/logout', { method: 'GET', cache: "no-store" }); } catch(e) {}
             wipeAndExit();
         }
 
         function wipeAndExit() {
-            document.body.innerHTML = "<div style='background:#0d1117; color:#f85149; display:flex; justify-content:center; align-items:center; height:100vh; font-family:Arial; font-size:1.5rem; font-weight:bold; text-align:center;'>⚠️ Session Ended</div>";
+            document.body.innerHTML = "<div style='background:#0d1117; color:#f85149; display:flex; justify-content:center; align-items:center; height:100vh; font-family:Arial; font-size:1.5rem; font-weight:bold; text-align:center;'>⚠️ Page Not Available / Session Expired</div>";
             window.location.href = "/";
         }
 
@@ -649,7 +560,6 @@ CHAT_HTML = """
         
         let isE2EEActive = localStorage.getItem('ghost_e2ee') === 'true';
         updateE2EEButtonUI();
-
         renderJoinedRooms();
 
         async function initChat() {
@@ -659,7 +569,6 @@ CHAT_HTML = """
                 if(data.authenticated) {
                     if(data.is_blocked || data.is_deleted) { instantLogout(); return; }
                     myUsername = data.username;
-                    document.getElementById('lobby-user-tag').innerText = "👤 " + myUsername;
                     if(data.is_admin) { document.getElementById('admin-panel-btn').style.display = 'inline-block'; }
                 } else { window.location.href = "/"; }
             } catch(e) { window.location.href = "/"; }
@@ -877,42 +786,107 @@ CHAT_HTML = """
             }
         });
 
+        // WebRTC Call System (Fixed for Audio-only vs Video separation & Earpiece routing)
         let localStream, peerConnection;
         const servers = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+
         async function startCall(type) {
             document.getElementById('video-container').style.display = 'flex';
+            const localVidEl = document.getElementById('localVideo');
+            const statusTitle = document.getElementById('call-status-title');
+
             try {
-                localStream = await navigator.mediaDevices.getUserMedia({ video: type === 'video', audio: true });
-                document.getElementById('localVideo').srcObject = localStream;
+                if (type === 'video') {
+                    statusTitle.innerText = "📹 Video Call Connected";
+                    localVidEl.style.display = 'block';
+                    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                } else {
+                    statusTitle.innerText = "📞 Audio Call Connected";
+                    localVidEl.style.display = 'none'; // Audio call mein khudka video element hide
+                    // Sirf audio stream fetch karega, camera bilkul access nahi hoga
+                    localStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+                }
+
+                localVidEl.srcObject = localStream;
                 peerConnection = new RTCPeerConnection(servers);
+                
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-                peerConnection.ontrack = e => document.getElementById('remoteVideo').srcObject = e.streams[0];
-                peerConnection.onicecandidate = e => { if (e.candidate) socket.emit('ice_candidate', { room: currentRoom, password: roomPassword, candidate: e.candidate }); };
+                
+                peerConnection.ontrack = e => {
+                    const remoteVidEl = document.getElementById('remoteVideo');
+                    remoteVidEl.srcObject = e.streams[0];
+                    // Speaker fix: Audio call mein loudspeaker enforce hone se rokne ke liye normal audio output stream set ki gayi hai
+                    remoteVidEl.muted = false;
+                };
+
+                peerConnection.onicecandidate = e => { 
+                    if (e.candidate) {
+                        socket.emit('ice_candidate', { room: currentRoom, password: roomPassword, candidate: e.candidate, type: type }); 
+                    }
+                };
+
                 let offer = await peerConnection.createOffer();
                 await peerConnection.setLocalDescription(offer);
-                socket.emit('offer', { room: currentRoom, password: roomPassword, offer: offer });
-            } catch (err) { alert("Call error"); endCall(); }
+                socket.emit('offer', { room: currentRoom, password: roomPassword, offer: offer, type: type });
+            } catch (err) { 
+                alert("Microphone/Camera permission denied or error occurred!"); 
+                endCall(); 
+            }
         }
+
         socket.on('offer', async (data) => {
             document.getElementById('video-container').style.display = 'flex';
+            const statusTitle = document.getElementById('call-status-title');
+            const localVidEl = document.getElementById('localVideo');
+            
+            statusTitle.innerText = data.type === 'video' ? "📹 Video Call Connected" : "📞 Audio Call Connected";
+            if(data.type === 'video') {
+                localVidEl.style.display = 'block';
+            } else {
+                localVidEl.style.display = 'none';
+            }
+
             peerConnection = new RTCPeerConnection(servers);
             try {
-                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                document.getElementById('localVideo').srcObject = localStream;
+                localStream = await navigator.mediaDevices.getUserMedia({ video: data.type === 'video', audio: true });
+                localVidEl.srcObject = localStream;
                 localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
             } catch(e){}
-            peerConnection.ontrack = e => document.getElementById('remoteVideo').srcObject = e.streams[0];
-            peerConnection.onicecandidate = e => { if (e.candidate) socket.emit('ice_candidate', { room: currentRoom, password: roomPassword, candidate: e.candidate }); };
+
+            peerConnection.ontrack = e => {
+                document.getElementById('remoteVideo').srcObject = e.streams[0];
+            };
+
+            peerConnection.onicecandidate = e => { 
+                if (e.candidate) {
+                    socket.emit('ice_candidate', { room: currentRoom, password: roomPassword, candidate: e.candidate, type: data.type }); 
+                }
+            };
+
             await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
             let ans = await peerConnection.createAnswer();
             await peerConnection.setLocalDescription(ans);
             socket.emit('answer', { room: currentRoom, password: roomPassword, answer: ans });
         });
-        socket.on('answer', async (data) => { if(peerConnection) await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer)); });
-        socket.on('ice_candidate', async (data) => { if (peerConnection && data.candidate) await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate)); });
+
+        socket.on('answer', async (data) => { 
+            if(peerConnection) await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer)); 
+        });
+
+        socket.on('ice_candidate', async (data) => { 
+            if (peerConnection && data.candidate) await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate)); 
+        });
+
         function endCall() {
-            if (localStream) localStream.getTracks().forEach(t => t.stop());
-            if (peerConnection) peerConnection.close();
+            if (localStream) {
+                localStream.getTracks().forEach(t => t.stop());
+            }
+            if (peerConnection) {
+                peerConnection.close();
+                peerConnection = null;
+            }
+            document.getElementById('localVideo').srcObject = null;
+            document.getElementById('remoteVideo').srcObject = null;
             document.getElementById('video-container').style.display = 'none';
         }
     </script>
@@ -926,8 +900,7 @@ ONLINE_USERS = set()
 
 @app.route('/')
 def home():
-    if session.get('authenticated'):
-        return redirect(url_for('chat'))
+    session.clear()
     return LOGIN_HTML
 
 @app.route('/logout')
@@ -1018,7 +991,6 @@ def login():
     conn.close()
     
     if row and row[0] == p:
-        session.permanent = True
         session['authenticated'] = True
         session['user'] = u
         session['is_admin'] = (u == "admin")
