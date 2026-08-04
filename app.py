@@ -5,10 +5,11 @@ import os
 app = Flask(__name__)
 app.secret_key = "ghost_super_secret_key_multi_user_998877"
 
-# Registered users database (In-memory dictionary)
+# Database & Blocklists (In-memory storage)
 REGISTERED_USERS = {
     "admin": "guru&guru16230"
 }
+BLOCKED_USERS = []
 
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
@@ -126,53 +127,96 @@ ADMIN_HTML = """
     <title>Admin Panel</title>
     <style>
         body { background: #0d1117; color: white; font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; }
-        .admin-box { background: #161b22; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 400px; border: 1px solid #30363d; }
-        ul { list-style: none; padding: 0; max-height: 250px; overflow-y: auto; margin-top: 15px; }
+        .admin-box { background: #161b22; padding: 25px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); width: 450px; border: 1px solid #30363d; }
+        ul { list-style: none; padding: 0; max-height: 200px; overflow-y: auto; margin-top: 10px; margin-bottom: 20px; }
         li { background: #21262d; padding: 10px; margin-bottom: 8px; border-radius: 6px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #30363d; font-size: 13px; }
-        button.delete-user-btn { background: #da3633; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        button.action-btn { background: #da3633; color: white; border: none; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 11px; }
+        button.unblock-btn { background: #238636; }
         .back-link { display: inline-block; margin-top: 15px; color: #58a6ff; text-decoration: none; font-size: 13px; margin-right: 15px; }
+        .section-title { font-size: 14px; color: #58a6ff; margin-bottom: 5px; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="admin-box">
-        <h2>🛡️ Multi-User Control Panel</h2>
-        <p style="color: #8b949e; font-size: 12px;">Active Registered Users</p>
+        <h2>🛡️ Admin Control Panel</h2>
+        <p style="color: #8b949e; font-size: 12px; margin-bottom: 15px;">Total Users: <b id="total-count" style="color:white;">0</b></p>
+        
+        <div class="section-title">👥 Active Registered Users</div>
         <ul id="users-list"></ul>
-        <a href="/chat" class="back-link">⬅ Chat</a>
+
+        <div class="section-title" style="color: #f85149;">🚫 Blocked Users List</div>
+        <ul id="blocked-list"></ul>
+
+        <a href="/chat" class="back-link">⬅ Back to Chat</a>
         <a href="/logout" class="back-link" style="color: #f85149;">Logout</a>
     </div>
 
     <script>
-        async function fetchUsers() {
+        async function fetchDashboard() {
             try {
-                let resUsr = await fetch('/get-all-users');
-                let dataUsr = await resUsr.json();
+                let res = await fetch('/get-admin-data');
+                let data = await res.json();
+                
+                document.getElementById('total-count').innerText = data.users.length;
+                
                 let usrListEl = document.getElementById('users-list');
+                let blockedListEl = document.getElementById('blocked-list');
+                
                 usrListEl.innerHTML = "";
-                dataUsr.users.forEach(u => {
+                blockedListEl.innerHTML = "";
+
+                // Populate Active Users
+                data.users.forEach(u => {
+                    let isBlocked = data.blocked.includes(u);
                     usrListEl.innerHTML += `
                         <li>
-                            <span>👤 ${u}</span>
-                            ${u !== 'admin' ? `<button class="delete-user-btn" onclick="deleteUser('${u}')">Delete</button>` : '<span style="color:#8b949e; font-size:11px;">Protected</span>'}
+                            <span>👤 ${u} ${isBlocked ? '<span style="color:#f85149; font-size:11px;">(Blocked)</span>' : ''}</span>
+                            <div>
+                                ${u !== 'admin' ? (!isBlocked ? `<button class="action-btn" onclick="blockUser('${u}')">Block</button>` : '') : '<span style="color:#8b949e; font-size:11px;">Protected</span>'}
+                            </div>
                         </li>`;
                 });
+
+                // Populate Blocked Users List with Unblock Option
+                if(data.blocked.length === 0) {
+                    blockedListEl.innerHTML = `<li style="justify-content:center; color:#8b949e;">No blocked users</li>`;
+                } else {
+                    data.blocked.forEach(bu => {
+                        blockedListEl.innerHTML += `
+                            <li>
+                                <span style="color: #f85149;">🔒 ${bu}</span>
+                                <button class="action-btn unblock-btn" onclick="unblockUser('${bu}')">Unblock</button>
+                            </li>`;
+                    });
+                }
             } catch(e) {}
         }
 
-        async function deleteUser(username) {
-            let adminPass = prompt("Enter Admin Password to delete user '" + username + "':");
-            if (adminPass) {
-                let res = await fetch('/delete-user', {
+        async function blockUser(username) {
+            if (confirm("Are you sure you want to block " + username + "?")) {
+                let res = await fetch('/block-user', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: username, admin_password: adminPass })
+                    body: JSON.stringify({ username: username })
                 });
                 let data = await res.json();
-                if (data.status === "success") { alert("User deleted!"); fetchUsers(); }
+                if (data.status === "success") { fetchDashboard(); }
                 else { alert(data.message || "Failed!"); }
             }
         }
-        fetchUsers();
+
+        async function unblockUser(username) {
+            let res = await fetch('/unblock-user', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: username })
+            });
+            let data = await res.json();
+            if (data.status === "success") { fetchDashboard(); }
+            else { alert(data.message || "Failed!"); }
+        }
+
+        fetchDashboard();
     </script>
 </body>
 </html>
@@ -258,7 +302,18 @@ CHAT_HTML = """
         let isE2EEActive = localStorage.getItem('ghost_e2ee') === 'true';
         updateE2EEButtonUI();
 
-        // Auto logout / redirect to login if app is minimized or phone is locked
+        // Periodic block check & background logout
+        setInterval(async () => {
+            try {
+                let res = await fetch('/check-session');
+                let data = await res.json();
+                if(!data.authenticated || data.is_blocked) {
+                    alert("Your account has been restricted or logged out!");
+                    window.location.href = "/logout";
+                }
+            } catch(e) {}
+        }, 5000);
+
         document.addEventListener("visibilitychange", function() {
             if (document.hidden) {
                 fetch('/logout').then(() => {
@@ -272,6 +327,7 @@ CHAT_HTML = """
                 let res = await fetch('/check-session');
                 let data = await res.json();
                 if(data.authenticated) {
+                    if(data.is_blocked) { window.location.href = "/logout"; return; }
                     myUsername = data.username;
                     if(data.is_admin) { document.getElementById('admin-panel-btn').style.display = 'inline-block'; }
                 } else {
@@ -431,7 +487,10 @@ CHAT_HTML = """
 @app.route('/')
 def home():
     if session.get('authenticated'):
-        return redirect(url_for('chat'))
+        if session.get('user') in BLOCKED_USERS:
+            session.clear()
+        else:
+            return redirect(url_for('chat'))
     return LOGIN_HTML
 
 @app.route('/logout')
@@ -455,6 +514,9 @@ def login():
     data = request.json
     u, p = data.get('username', '').strip(), data.get('password', '').strip()
 
+    if u in BLOCKED_USERS:
+        return jsonify({"status": "error", "message": "Your account has been blocked by admin!"}), 403
+
     if u in REGISTERED_USERS and REGISTERED_USERS[u] == p:
         session['authenticated'] = True
         session['user'] = u
@@ -465,10 +527,13 @@ def login():
 
 @app.route('/check-session')
 def check_session():
+    user = session.get('user')
+    is_blocked = user in BLOCKED_USERS
     return jsonify({
-        "authenticated": session.get('authenticated', False),
+        "authenticated": session.get('authenticated', False) and not is_blocked,
         "is_admin": session.get('is_admin', False),
-        "username": session.get('user', 'Guest')
+        "username": user if user else 'Guest',
+        "is_blocked": is_blocked
     })
 
 @app.route('/admin-panel-guru')
@@ -477,29 +542,41 @@ def admin_panel():
         return redirect(url_for('home'))
     return ADMIN_HTML
 
-@app.route('/get-all-users')
-def get_all_users():
+@app.route('/get-admin-data')
+def get_admin_data():
     if not session.get('is_admin', False): 
-        return jsonify({"users": []}), 403
-    return jsonify({"users": list(REGISTERED_USERS.keys())})
+        return jsonify({"users": [], "blocked": []}), 403
+    return jsonify({
+        "users": list(REGISTERED_USERS.keys()),
+        "blocked": BLOCKED_USERS
+    })
 
-@app.route('/delete-user', methods=['POST'])
-def delete_user():
+@app.route('/block-user', methods=['POST'])
+def block_user():
     if not session.get('is_admin', False): 
         return jsonify({"status": "unauthorized"}), 403
     data = request.json
     target_user = data.get('username')
-    admin_pass = data.get('admin_password')
-    if REGISTERED_USERS.get("admin") != admin_pass:
-        return jsonify({"status": "error", "message": "Incorrect Admin Password!"}), 401
     if target_user in REGISTERED_USERS and target_user != "admin":
-        del REGISTERED_USERS[target_user]
+        if target_user not in BLOCKED_USERS:
+            BLOCKED_USERS.append(target_user)
         return jsonify({"status": "success"})
-    return jsonify({"status": "error", "message": "User not found!"}), 404
+    return jsonify({"status": "error", "message": "User not found or protected!"}), 404
+
+@app.route('/unblock-user', methods=['POST'])
+def unblock_user():
+    if not session.get('is_admin', False): 
+        return jsonify({"status": "unauthorized"}), 403
+    data = request.json
+    target_user = data.get('username')
+    if target_user in BLOCKED_USERS:
+        BLOCKED_USERS.remove(target_user)
+        return jsonify({"status": "success"})
+    return jsonify({"status": "error", "message": "User not in blocked list!"}), 404
 
 @app.route('/chat')
 def chat():
-    if not session.get('authenticated'): 
+    if not session.get('authenticated') or session.get('user') in BLOCKED_USERS: 
         return redirect(url_for('home'))
     return CHAT_HTML
 
