@@ -479,8 +479,6 @@ CHAT_HTML = """
         .btn-video { background-color: #8957e5; }
         .btn-e2ee { background-color: #30363d; color: #8b949e; border: 1px solid #484f58; }
         .btn-e2ee.active { background-color: #238636; color: white; border-color: #2ea043; }
-        .btn-autodel { background-color: #30363d; color: #8b949e; border: 1px solid #484f58; }
-        .btn-autodel.active { background-color: #d29922; color: #0d1117; border-color: #e3b341; font-weight: bold; }
         .btn-admin { background-color: #d29922; display: none; color: #0d1117; }
         .btn-logout-manual { background-color: #da3633; color: white; }
         
@@ -490,7 +488,7 @@ CHAT_HTML = """
         .my-msg { align-self: flex-end; background: #1f382b; }
         .other-msg { align-self: flex-start; }
         .user-id { font-size: 0.7em; color: #8b949e; margin-bottom: 2px; display: block; font-weight: bold; }
-        .msg-footer { display: flex; justify-content: flex-end; align-items: center; gap: 4px; font-size: 0.65rem; margin-top: 2px; color: #cbd5e1; }
+        .msg-footer { display: flex; justify-content: flex-end; align-items: center; gap: 6px; font-size: 0.65rem; margin-top: 2px; color: #cbd5e1; }
         .ticks { font-size: 0.85rem; font-family: monospace; color: #8b949e; }
         .ticks.seen { color: #53bdeb !important; }
         
@@ -581,7 +579,6 @@ CHAT_HTML = """
                 <span id="display-status" class="status-text">● Secure Room Connected</span>
             </div>
             <div class="call-btns">
-                <button id="autodel-btn" class="btn-call btn-autodel active" onclick="toggleAutoDelete()" title="Toggle Auto-Delete after Seen">⏳ON</button>
                 <button id="e2ee-btn" class="btn-call btn-e2ee" onclick="toggleE2EE()">🔐</button>
                 <button class="btn-call btn-audio" onclick="startCall('audio')">📞 Audio</button>
                 <button class="btn-call btn-video" onclick="startCall('video')">📹 Video</button>
@@ -632,10 +629,8 @@ CHAT_HTML = """
         let typingTimeout = null;
         let lastSender = null;
         let isE2EEActive = localStorage.getItem('ghost_e2ee') === 'true';
-        let isAutoDeleteActive = localStorage.getItem('ghost_autodel') !== 'false'; // Default ON
         let currentFacingMode = 'user';
         updateE2EEButtonUI();
-        updateAutoDeleteButtonUI();
         renderJoinedRooms();
 
         async function initChat() {
@@ -763,7 +758,6 @@ CHAT_HTML = """
                 let displayTitle = currentRoom.startsWith("private_") ? "Direct Secure Chat" : currentRoom;
                 document.getElementById('room-title').innerText = "👻 " + displayTitle + ` (${data.active_users} online)`;
                 
-                // Fetch any offline/pending messages waiting for us
                 socket.emit('fetch_pending_messages', { room: currentRoom, user: myUsername });
             } else {
                 alert(data.message || "Incorrect room password!");
@@ -801,25 +795,6 @@ CHAT_HTML = """
             else { btn.className = "btn-call btn-e2ee"; btn.innerText = "🔐OFF"; }
         }
 
-        function toggleAutoDelete() {
-            isAutoDeleteActive = !isAutoDeleteActive;
-            localStorage.setItem('ghost_autodel', isAutoDeleteActive);
-            updateAutoDeleteButtonUI();
-        }
-
-        function updateAutoDeleteButtonUI() {
-            const btn = document.getElementById('autodel-btn');
-            if (isAutoDeleteActive) { 
-                btn.className = "btn-call btn-autodel active"; 
-                btn.innerText = "⏳ON"; 
-                btn.title = "Auto-Delete After Seen: ON";
-            } else { 
-                btn.className = "btn-call btn-autodel"; 
-                btn.innerText = "⏳OFF"; 
-                btn.title = "Auto-Delete After Seen: OFF (Safe Mode)";
-            }
-        }
-
         function encryptText(text) { return !isE2EEActive ? text : "ENC[" + btoa(text) + "]"; }
         function decryptText(text) {
             if (text.startsWith("ENC[")) {
@@ -847,7 +822,6 @@ CHAT_HTML = """
                     user: myUsername, 
                     type: 'text', 
                     content: encryptText(text), 
-                    autodel: isAutoDeleteActive, 
                     timestamp: Date.now() 
                 };
                 appendMessageToScreen(messageData, true);
@@ -876,7 +850,6 @@ CHAT_HTML = """
                         type: file.type.startsWith('image/') ? 'image' : 'file', 
                         content: result.file_url, 
                         filename: file.name,
-                        autodel: isAutoDeleteActive,
                         timestamp: Date.now() 
                     };
                     appendMessageToScreen(messageData, true);
@@ -888,9 +861,22 @@ CHAT_HTML = """
             fileInput.value = "";
         }
 
+        function manualDeleteMessage(msgId) {
+            socket.emit('delete_message_for_everyone', { room: currentRoom, password: roomPassword, id: msgId });
+        }
+
+        socket.on('remove_message_card', (data) => {
+            let card = document.getElementById('card_' + data.id);
+            if(card) {
+                card.style.transition = "opacity 0.3s ease";
+                card.style.opacity = "0";
+                setTimeout(() => card.remove(), 300);
+            }
+        });
+
         function appendMessageToScreen(data, isMine) {
             const msgBox = document.getElementById('messages');
-            if(document.getElementById('card_' + data.id)) return; // Avoid duplication
+            if(document.getElementById('card_' + data.id)) return;
 
             const msgCard = document.createElement('div');
             msgCard.id = 'card_' + data.id;
@@ -901,6 +887,9 @@ CHAT_HTML = """
             let userHTML = showUserHeading ? `<span class="user-id">${data.user}</span>` : '';
             let ticksHTML = isMine ? `<span id="tick_${data.id}" class="ticks">✓</span>` : '';
             
+            // Sender ke paas hamesha Manual Delete button rahega jab tak message delete na ho
+            let deleteBtnHTML = isMine ? `<button onclick="manualDeleteMessage('${data.id}')" style="background:none; border:none; color:#f85149; font-size:10px; cursor:pointer;" title="Delete for Everyone">🗑️ Delete</button>` : '';
+
             let contentHTML = "";
             if (data.type === 'image') {
                 contentHTML = `<a href="${data.content}" target="_blank"><img src="${data.content}" class="chat-media"></a>`;
@@ -914,6 +903,7 @@ CHAT_HTML = """
                 ${userHTML}
                 ${contentHTML}
                 <div class="msg-footer">
+                    ${deleteBtnHTML}
                     <span>${new Date(data.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
                     ${ticksHTML}
                 </div>
@@ -923,20 +913,17 @@ CHAT_HTML = """
             msgBox.scrollTop = msgBox.scrollHeight;
 
             if(!isMine) {
-                // Once the recipient sees the message on screen, acknowledge seen
                 socket.emit('message_seen', { room: currentRoom, password: roomPassword, id: data.id });
                 
-                // If auto-delete feature is enabled for this message, self-destruct 3 seconds after being viewed
-                if (data.autodel) {
-                    setTimeout(() => {
-                        let card = document.getElementById('card_' + data.id);
-                        if(card) {
-                            card.style.transition = "opacity 0.5s ease";
-                            card.style.opacity = "0";
-                            setTimeout(() => card.remove(), 500);
-                        }
-                    }, 3000);
-                }
+                // Samne wale ke dekhne par har haal mein 1 minute (60000ms) baad delete ho jayega
+                setTimeout(() => {
+                    let card = document.getElementById('card_' + data.id);
+                    if(card) {
+                        card.style.transition = "opacity 0.5s ease";
+                        card.style.opacity = "0";
+                        setTimeout(() => card.remove(), 500);
+                    }
+                }, 60000);
             }
         }
 
@@ -955,17 +942,15 @@ CHAT_HTML = """
                 tickEl.innerText = "✓✓"; 
                 tickEl.className = "ticks seen"; 
                 
-                // If auto-delete feature is enabled for this message, self-destruct sender's message card 3 seconds after partner has seen it
-                if (data.autodel) {
-                    setTimeout(() => {
-                        let card = document.getElementById('card_' + data.id);
-                        if(card) {
-                            card.style.transition = "opacity 0.5s ease";
-                            card.style.opacity = "0";
-                            setTimeout(() => card.remove(), 500);
-                        }
-                    }, 3000);
-                }
+                // Sender ki screen par bhi message dekhne ke 1 minute (60000ms) baad pakka delete ho jayega
+                setTimeout(() => {
+                    let card = document.getElementById('card_' + data.id);
+                    if(card) {
+                        card.style.transition = "opacity 0.5s ease";
+                        card.style.opacity = "0";
+                        setTimeout(() => card.remove(), 500);
+                    }
+                }, 60000);
             }
         });
 
@@ -1356,7 +1341,6 @@ def handle_fetch_pending(data):
     for row in rows:
         msg_id, msg_json = row[0], eval(row[1])
         emit('receive_message', msg_json, to=request.sid)
-    # Remove delivered pending messages
     cursor.execute("DELETE FROM pending_messages WHERE room = ? AND recipient = ?", (room, username))
     conn.commit()
     conn.close()
@@ -1404,7 +1388,6 @@ def handle_message(data):
             if room not in ROOM_FILES: ROOM_FILES[room] = []
             ROOM_FILES[room].append(msg_data['content'])
         
-        # Check if recipient is active in room. If not, store in pending messages for offline delivery.
         active_users_in_room = ROOM_USERS.get(room, [])
         if len(active_users_in_room) <= 1:
             if room.startswith("private_"):
@@ -1425,7 +1408,20 @@ def handle_message(data):
 def handle_seen(data):
     room = data['room']
     if ROOM_PASSWORDS.get(room) == data.get('password'):
-        emit('message_seen_ack', {"id": data['id'], "autodel": data.get('autodel', True)}, to=room)
+        emit('message_seen_ack', {"id": data['id']}, to=room)
+
+@socketio.on('delete_message_for_everyone')
+def handle_delete_for_everyone(data):
+    room = data.get('room')
+    msg_id = data.get('id')
+    if ROOM_PASSWORDS.get(room) == data.get('password'):
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM pending_messages WHERE id = ?", (msg_id,))
+        conn.commit()
+        conn.close()
+        
+        emit('remove_message_card', {"id": msg_id}, to=room)
 
 @socketio.on('typing')
 def handle_typing(data): emit('display_typing', data, to=data['room'], include_self=False)
