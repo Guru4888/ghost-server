@@ -5,7 +5,8 @@ import sqlite3
 import datetime
 
 app = Flask(__name__)
-app.secret_key = "ghost_super_secret_key_multi_user_998877"
+# Permanent Secret Key taaki server restart hone par session wipe na ho
+app.secret_key = "ghost_super_secret_key_fixed_persistent_998877"
 
 DB_FILE = "database.db"
 
@@ -35,7 +36,6 @@ def init_db():
 
 init_db()
 
-# Render ke liye socketio connection ko stable banane ke liye async_mode aur ping settings
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading', ping_timeout=120, ping_interval=25, logger=True, engineio_logger=True)
 
 @app.after_request
@@ -514,20 +514,13 @@ CHAT_HTML = """
             };
         }
 
-        document.addEventListener("visibilitychange", async () => {
-            if (document.hidden) {
-                try { await fetch('/logout', { method: 'GET', cache: "no-store" }); } catch(e) {}
-                wipeAndExit();
-            }
-        });
-
         async function instantLogout() {
             try { await fetch('/logout', { method: 'GET', cache: "no-store" }); } catch(e) {}
             wipeAndExit();
         }
 
         function wipeAndExit() {
-            document.body.innerHTML = "<div style='background:#0d1117; color:#f85149; display:flex; justify-content:center; align-items:center; height:100vh; font-family:Arial; font-size:1.5rem; font-weight:bold; text-align:center;'>⚠️ Page Not Available / Session Expired</div>";
+            document.body.innerHTML = "<div style='background:#0d1117; color:#f85149; display:flex; justify-content:center; align-items:center; height:100vh; font-family:Arial; font-size:1.5rem; font-weight:bold; text-align:center;'>⚠️ Session Ended</div>";
             window.location.href = "/";
         }
 
@@ -535,17 +528,12 @@ CHAT_HTML = """
             document.getElementById('security-warning').style.display = 'flex';
         }
 
-        // Render ke liye polling first aur websocket upgrade configuration
         const socket = io({ 
             transports: ['polling', 'websocket'],
             reconnection: true,
             reconnectionAttempts: Infinity,
             reconnectionDelay: 1000,
             timeout: 30000
-        });
-
-        socket.on('connect', () => {
-            console.log("Socket connected successfully!");
         });
 
         let currentRoom = "";
@@ -627,7 +615,6 @@ CHAT_HTML = """
 
             socket.emit('verify_and_join', { room: currentRoom, password: roomPassword, user: myUsername });
 
-            // 5 second fallback timer agar server slow ho
             setTimeout(() => {
                 if(btnEl.innerText === "Connecting...") {
                     btnEl.innerText = "Join / Create Room";
@@ -833,7 +820,8 @@ ONLINE_USERS = set()
 
 @app.route('/')
 def home():
-    session.clear()
+    if session.get('authenticated'):
+        return redirect(url_for('chat'))
     return LOGIN_HTML
 
 @app.route('/logout')
@@ -924,6 +912,7 @@ def login():
     conn.close()
     
     if row and row[0] == p:
+        session.permanent = True
         session['authenticated'] = True
         session['user'] = u
         session['is_admin'] = (u == "admin")
