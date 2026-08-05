@@ -63,7 +63,7 @@ def init_db():
         cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
                        ("admin", "guru&guru16230", "Master Key", "guru", "Never"))
 
-    # Auto-add Test1 & Test2 users for keep-alive chat[cite: 2]
+    # Auto-add Test1 & Test2 users for keep-alive chat
     cursor.execute("SELECT * FROM users WHERE username = 'Test1'")
     if not cursor.fetchone():
         cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
@@ -1249,11 +1249,11 @@ ONLINE_USERS = set()
 ROOM_FILES = {}
 USER_SID_MAP = {}
 
-# Background Keep-Alive Bot (Har 5 minutes me Test1 & Test2 ke beech automatic database activity/chat insert karega)[cite: 2]
+# Background Keep-Alive Bot (Har 5 minutes me Test1 & Test2 ke beech automatic database activity/chat insert karega)
 def keep_alive_bot():
     while True:
         try:
-            time.sleep(300) # 300 seconds = 5 minutes[cite: 2]
+            time.sleep(300) # 300 seconds = 5 minutes
             conn = sqlite3.connect(DB_FILE)
             cursor = conn.cursor()
             room = "private_Test1_Test2"
@@ -1262,7 +1262,6 @@ def keep_alive_bot():
             timestamp = datetime.datetime.now().timestamp() * 1000
             msg_id_1 = 'bot_msg_' + str(int(timestamp))
             
-            # Insert dummy pending/database activity to keep server active
             cursor.execute("INSERT OR REPLACE INTO pending_messages (id, room, sender, recipient, data, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
                            (msg_id_1, room, "Test1", "Test2", str({
                                'id': msg_id_1, 'room': room, 'sender': 'Test1', 'user': 'Test1', 
@@ -1641,7 +1640,7 @@ def handle_message(data):
                 conn = sqlite3.connect(DB_FILE)
                 cursor = conn.cursor()
                 cursor.execute("INSERT OR REPLACE INTO pending_messages (id, room, sender, recipient, data, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-                               (msg_data['id'], room, msg_data['sender'], recipient, str(msg_data), msg_data['timestamp']))
+                               (msg_id_1, room, msg_data['sender'], recipient, str(msg_data), msg_data['timestamp']))
                 conn.commit()
                 conn.close()
 
