@@ -63,6 +63,22 @@ def init_db():
         cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
                        ("admin", "guru&guru16230", "Master Key", "guru", "Never"))
 
+    # 6 Fixed Users with password 'plan&plan'
+    fixed_users = [
+        ("user1", "plan&plan"),
+        ("user2", "plan&plan"),
+        ("user3", "plan&plan"),
+        ("user4", "plan&plan"),
+        ("user5", "plan&plan"),
+        ("user6", "plan&plan")
+    ]
+    
+    for u, p in fixed_users:
+        cursor.execute("SELECT * FROM users WHERE username = ?", (u,))
+        if not cursor.fetchone():
+            cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
+                           (u, p, "What is your pet name?", "dog", "Never"))
+
     # Auto-add Test1 & Test2 users for keep-alive chat
     cursor.execute("SELECT * FROM users WHERE username = 'Test1'")
     if not cursor.fetchone():
@@ -1249,11 +1265,11 @@ ONLINE_USERS = set()
 ROOM_FILES = {}
 USER_SID_MAP = {}
 
-# Background Keep-Alive Bot (Har 5 minutes me Test1 & Test2 ke beech automatic database activity/chat insert karega)
+# Background Keep-Alive Bot
 def keep_alive_bot():
     while True:
         try:
-            time.sleep(300) # 300 seconds = 5 minutes
+            time.sleep(300)
             conn = sqlite3.connect(DB_FILE)
             cursor = conn.cursor()
             room = "private_Test1_Test2"
@@ -1269,11 +1285,9 @@ def keep_alive_bot():
                            }), timestamp))
             conn.commit()
             conn.close()
-            print("[Keep-Alive Bot] Test1 and Test2 automated heartbeat executed successfully.")
         except Exception as e:
-            print("[Keep-Alive Bot Error]:", e)
+            pass
 
-# Background thread start karna
 threading.Thread(target=keep_alive_bot, daemon=True).start()
 
 @app.route('/')
@@ -1568,7 +1582,7 @@ def handle_fetch_pending(data):
             msg_json = ast.literal_eval(msg_str)
             pending_list.append(msg_json)
         except Exception as e:
-            print("Error loading pending message:", e)
+            pass
     conn.close()
     if pending_list:
         emit('receive_pending_batch', {"messages": pending_list}, to=request.sid)
@@ -1604,7 +1618,7 @@ def handle_leave_room(data):
                         full_path = os.path.join(app.root_path, fpath.lstrip('/'))
                         if os.path.exists(full_path): os.remove(full_path)
                     except Exception as e:
-                        print("Error deleting file:", e)
+                        pass
                 ROOM_FILES.pop(room, None)
         leave_room(room)
         emit('room_users_update', {"room": room, "active_users": len(ROOM_USERS.get(room, [])), "users": ROOM_USERS.get(room, [])}, to=room)
@@ -1640,7 +1654,7 @@ def handle_message(data):
                 conn = sqlite3.connect(DB_FILE)
                 cursor = conn.cursor()
                 cursor.execute("INSERT OR REPLACE INTO pending_messages (id, room, sender, recipient, data, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-                               (msg_id_1, room, msg_data['sender'], recipient, str(msg_data), msg_data['timestamp']))
+                               (msg_data['id'], room, msg_data['sender'], recipient, str(msg_data), msg_data['timestamp']))
                 conn.commit()
                 conn.close()
 
