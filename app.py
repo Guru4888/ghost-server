@@ -4,7 +4,6 @@ import os
 import sqlite3
 import datetime
 import time
-import random
 import threading
 from werkzeug.utils import secure_filename
 
@@ -58,19 +57,23 @@ def init_db():
     ''')
     cursor.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('beep_interval', '30000')")
     
+    # Default Admin
     cursor.execute("SELECT * FROM users WHERE username = 'admin'")
     if not cursor.fetchone():
         cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
                        ("admin", "guru&guru16230", "Master Key", "guru", "Never"))
-                       
-    cursor.execute("INSERT OR IGNORE INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
-                   ("Test1", "testpass1", "Pet?", "dog", "Never"))
-    cursor.execute("INSERT OR IGNORE INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
-                   ("test2", "testpass2", "Pet?", "cat", "Never"))
-                   
-    cursor.execute("INSERT OR IGNORE INTO contacts (owner, contact_username) VALUES ('Test1', 'test2')")
-    cursor.execute("INSERT OR IGNORE INTO contacts (owner, contact_username) VALUES ('test2', 'Test1')")
-    
+
+    # Auto-add Test1 & Test2 users for keep-alive chat[cite: 2]
+    cursor.execute("SELECT * FROM users WHERE username = 'Test1'")
+    if not cursor.fetchone():
+        cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
+                       ("Test1", "testpass123", "What is your pet name?", "dog", "Never"))
+        
+    cursor.execute("SELECT * FROM users WHERE username = 'Test2'")
+    if not cursor.fetchone():
+        cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
+                       ("Test2", "testpass123", "What is your pet name?", "cat", "Never"))
+
     conn.commit()
     conn.close()
 
@@ -1024,7 +1027,6 @@ CHAT_HTML = """
 
         function scheduleAutoDelete(msgId) {
             if (activeTimers[msgId]) return;
-            // 1 Minute Auto Delete After Seen (60000 milliseconds)
             activeTimers[msgId] = setTimeout(() => {
                 let card = document.getElementById('card_' + msgId);
                 if(card) {
@@ -1246,6 +1248,34 @@ ROOM_USERS = {}
 ONLINE_USERS = set()
 ROOM_FILES = {}
 USER_SID_MAP = {}
+
+# Background Keep-Alive Bot (Har 5 minutes me Test1 & Test2 ke beech automatic database activity/chat insert karega)[cite: 2]
+def keep_alive_bot():
+    while True:
+        try:
+            time.sleep(300) # 300 seconds = 5 minutes[cite: 2]
+            conn = sqlite3.connect(DB_FILE)
+            cursor = conn.cursor()
+            room = "private_Test1_Test2"
+            ROOM_PASSWORDS[room] = "ghost_secure_direct_pass_999"
+            
+            timestamp = datetime.datetime.now().timestamp() * 1000
+            msg_id_1 = 'bot_msg_' + str(int(timestamp))
+            
+            # Insert dummy pending/database activity to keep server active
+            cursor.execute("INSERT OR REPLACE INTO pending_messages (id, room, sender, recipient, data, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+                           (msg_id_1, room, "Test1", "Test2", str({
+                               'id': msg_id_1, 'room': room, 'sender': 'Test1', 'user': 'Test1', 
+                               'type': 'text', 'content': 'Keep-alive automated ping', 'timestamp': timestamp
+                           }), timestamp))
+            conn.commit()
+            conn.close()
+            print("[Keep-Alive Bot] Test1 and Test2 automated heartbeat executed successfully.")
+        except Exception as e:
+            print("[Keep-Alive Bot Error]:", e)
+
+# Background thread start karna
+threading.Thread(target=keep_alive_bot, daemon=True).start()
 
 @app.route('/')
 def home():
@@ -1597,7 +1627,7 @@ def handle_admin_leave_spy(data):
 @socketio.on('send_message')
 def handle_message(data):
     room = data['room']
-    if ROOM_PASSWORDS.get(room) == data.get('password') or room.startswith("private_"):
+    if ROOM_PASSWORDS.get(room) == data.get('password'):
         msg_data = data['data']
         if msg_data.get('type') in ['image', 'file']:
             if room not in ROOM_FILES: ROOM_FILES[room] = []
@@ -1619,20 +1649,20 @@ def handle_message(data):
                     emit('trigger_unread_alarm', to=USER_SID_MAP[recipient])
         
         emit('receive_message', msg_data, to=room, include_self=False)
-        emit('admin_spy_receive', {"user": msg_data['user'], "msg": msg_data['content']}, to=room)
+        emit('admin_spy_receive', msg_data, to=room)
         emit('message_delivered', {"id": msg_data['id']}, to=room)
 
 @socketio.on('message_seen')
 def handle_seen(data):
     room = data['room']
-    if ROOM_PASSWORDS.get(room) == data.get('password') or room.startswith("private_"):
+    if ROOM_PASSWORDS.get(room) == data.get('password'):
         emit('message_seen_ack', {"id": data['id']}, to=room)
 
 @socketio.on('delete_message_for_everyone')
 def handle_delete_for_everyone(data):
     room = data.get('room')
     msg_id = data.get('id')
-    if ROOM_PASSWORDS.get(room) == data.get('password') or room.startswith("private_"):
+    if ROOM_PASSWORDS.get(room) == data.get('password'):
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         cursor.execute("DELETE FROM pending_messages WHERE id = ?", (msg_id,))
@@ -1657,64 +1687,6 @@ def handle_answer(data):
 @socketio.on('ice_candidate')
 def handle_ice(data): 
     if ROOM_PASSWORDS.get(data['room']) == data.get('password'): emit('ice_candidate', data, to=data['room'], include_self=False)
-
-def automated_chat_bot():
-    room = "private_Test1_test2"
-    passw = "ghost_secure_direct_pass_999"
-    ROOM_PASSWORDS[room] = passw
-    
-    messages_bank_1 = [
-        "Test1 ka pass", 
-        "Hello test2, kya haal hai?", 
-        "Project files bhej di hain.", 
-        "Meeting ka time kya hai?", 
-        "System check kar raha hoon."
-    ]
-    messages_bank_2 = [
-        "test 2 ka pass", 
-        "Sab badhiya hai Test1!", 
-        "Theek hai, main dekh leta hoon.", 
-        "Time fix nahi hai abhi.", 
-        "Thik hai bhai."
-    ]
-    
-    current_sender = "Test1"
-    
-    while True:
-        try:
-            delay_seconds = random.randint(120, 600)
-            time.sleep(delay_seconds)
-            
-            if current_sender == "Test1":
-                content = random.choice(messages_bank_1)
-                sender = "Test1"
-                current_sender = "test2"
-            else:
-                content = random.choice(messages_bank_2)
-                sender = "test2"
-                current_sender = "Test1"
-                
-            msg_id = 'bot_msg_' + str(int(time.time() * 1000)) + "_" + str(random.randint(1000, 9999))
-            msg_data = {
-                "id": msg_id,
-                "room": room,
-                "sender": sender,
-                "user": sender,
-                "type": "text",
-                "content": content,
-                "timestamp": int(time.time() * 1000)
-            }
-            
-            with app.app_context():
-                socketio.emit('receive_message', msg_data, room=room)
-                socketio.emit('admin_spy_receive', {"user": sender, "msg": content}, to=room)
-                
-        except Exception as e:
-            print("Bot Error:", e)
-            time.sleep(60)
-
-bot_thread = threading.Thread(target=automated_chat_bot, daemon=True)
-bot_thread.start()
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
