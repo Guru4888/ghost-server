@@ -47,7 +47,6 @@ def init_db():
             timestamp REAL
         )
     ''')
-    # Settings table for global beep interval (default 30 seconds = 30000 ms)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS app_settings (
             key TEXT PRIMARY KEY,
@@ -307,7 +306,6 @@ ADMIN_HTML = """
         <h2>🛡️ Admin Control Panel</h2>
         <p style="color: #8b949e; font-size: 12px; margin-bottom: 15px;">Total Users: <b id="total-count" style="color:white;">0</b></p>
         
-        <!-- Beep Timing Control Section -->
         <div class="section-title" style="color: #d29922;">⏰ Unread Alarm / Beep Interval Settings</div>
         <div style="background: #010409; border: 1px solid #30363d; border-radius: 6px; padding: 10px; margin-bottom: 15px;">
             <div style="font-size: 11px; color: #8b949e; margin-bottom: 6px;">Set alarm interval for all users (in seconds):</div>
@@ -360,7 +358,7 @@ ADMIN_HTML = """
                 let res = await fetch('/get-admin-data');
                 let data = await res.json();
                 document.getElementById('total-count').innerText = data.users.length;
-                document.getElementById('beep-time-input').value = data.beep_interval / 1000; // ms to seconds
+                document.getElementById('beep-time-input').value = data.beep_interval / 1000;
 
                 let usrListEl = document.getElementById('users-list');
                 let blockedListEl = document.getElementById('blocked-list');
@@ -415,7 +413,7 @@ ADMIN_HTML = """
             let res = await fetch('/admin-update-beep', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ seconds: 0 }) // 0 means turned off
+                body: JSON.stringify({ seconds: 0 })
             });
             let data = await res.json();
             if(data.status === 'success') {
@@ -601,7 +599,6 @@ CHAT_HTML = """
         </div>
     </div>
 
-    <!-- Call Screen -->
     <div id="video-container">
         <div class="video-box">
             <div class="video-header-bar">
@@ -689,12 +686,11 @@ CHAT_HTML = """
         let isMicMuted = false;
         
         let unreadAlertInterval = null;
-        let currentGlobalBeepInterval = 30000; // Default 30s
+        let currentGlobalBeepInterval = 30000;
 
         updateE2EEButtonUI();
         renderJoinedRooms();
 
-        // Server se current beep interval fetch karo
         async function fetchInitialSettings() {
             try {
                 let res = await fetch('/get-settings');
@@ -704,9 +700,8 @@ CHAT_HTML = """
         }
         fetchInitialSettings();
 
-        // Secret Alarm Sound Generator
         function playSecretAlarmSound() {
-            if (currentGlobalBeepInterval <= 0) return; // Agar admin ne band kiya hai toh beep nahi bajegi
+            if (currentGlobalBeepInterval <= 0) return;
             try {
                 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
                 const oscillator = audioCtx.createOscillator();
@@ -721,13 +716,11 @@ CHAT_HTML = """
 
                 oscillator.start();
                 oscillator.stop(audioCtx.currentTime + 0.3);
-            } catch (e) {
-                console.log("Audio alert failed");
-            }
+            } catch (e) {}
         }
 
         socket.on('trigger_unread_alarm', () => {
-            if (currentGlobalBeepInterval <= 0) return; // Agar 0 hai toh alarm trigger hi nahi hoga
+            if (currentGlobalBeepInterval <= 0) return;
             if (!unreadAlertInterval) {
                 unreadAlertInterval = setInterval(() => {
                     playSecretAlarmSound();
@@ -740,7 +733,6 @@ CHAT_HTML = """
             stopUserAlarmLocal();
         });
 
-        // User khud apne end se alarm band kar sakta hai
         function userTurnOffAlarm() {
             stopUserAlarmLocal();
         }
@@ -753,13 +745,11 @@ CHAT_HTML = """
             document.getElementById('alarm-off-btn').style.display = 'none';
         }
 
-        // Admin jab timing change karega ya off karega toh sabke liye update ho jayega
         socket.on('global_beep_update', (data) => {
             currentGlobalBeepInterval = data.beep_interval;
             if (currentGlobalBeepInterval <= 0) {
-                stopUserAlarmLocal(); // Agar admin ne poori tarah off kar diya
+                stopUserAlarmLocal();
             } else if (unreadAlertInterval) {
-                // Agar alarm chal raha hai toh naye interval ke sath restart karo
                 clearInterval(unreadAlertInterval);
                 unreadAlertInterval = setInterval(() => {
                     playSecretAlarmSound();
@@ -1447,7 +1437,6 @@ def admin_update_beep():
     cursor.execute("UPDATE app_settings SET value = ? WHERE key = 'beep_interval'", (str(millis),))
     conn.commit()
     conn.close()
-    # Real-time broadcast to everyone
     socketio.emit('global_beep_update', {"beep_interval": millis})
     return jsonify({"status": "success"})
 
