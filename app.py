@@ -1,23 +1,45 @@
 from flask import Flask, request, redirect, url_for, session, jsonify
 from flask_socketio import SocketIO, emit, join_room, leave_room
 import os
-import sqlite3
 import datetime
 import time
 import threading
 from werkzeug.utils import secure_filename
+import urllib.parse as urlparse
+import psycopg2
 
 app = Flask(__name__)
 app.secret_key = "ghost_super_secret_key_multi_user_998877"
 
-DB_FILE = "database.db"
 UPLOAD_FOLDER = "static/uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
+# PostgreSQL / Supabase Database Connection Helper
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+def get_db_connection():
+    if DATABASE_URL:
+        urlparse.uses_netloc.append("postgres")
+        url = urlparse.urlparse(DATABASE_URL)
+        conn = psycopg2.connect(
+            database=url.path[1:],
+            user=url.username,
+            password=url.password,
+            host=url.hostname,
+            port=url.port
+        )
+        return conn
+    else:
+        # Fallback agar DATABASE_URL na mile toh local SQLite chalega
+        import sqlite3
+        return sqlite3.connect("database.db")
+
 def init_db():
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     cursor = conn.cursor()
+    
+    # PostgreSQL syntax adjustments (TEXT PRIMARY KEY works same in both)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY,
@@ -46,7 +68,7 @@ def init_db():
             sender TEXT,
             recipient TEXT,
             data TEXT,
-            timestamp REAL
+            timestamp DOUBLE PRECISION
         )
     ''')
     cursor.execute('''
@@ -55,12 +77,16 @@ def init_db():
             value TEXT
         )
     ''')
-    cursor.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('beep_interval', '30000')")
+    
+    if DATABASE_URL:
+        cursor.execute("INSERT INTO app_settings (key, value) VALUES ('beep_interval', '30000') ON CONFLICT (key) DO NOTHING")
+    else:
+        cursor.execute("INSERT OR IGNORE INTO app_settings (key, value) VALUES ('beep_interval', '30000')")
     
     # Default Admin
     cursor.execute("SELECT * FROM users WHERE username = 'admin'")
     if not cursor.fetchone():
-        cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
+        cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (%s, %s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
                        ("admin", "guru&guru16230", "Master Key", "guru", "Never"))
 
     # 6 Fixed Users with password 'plan&plan'
@@ -74,23 +100,24 @@ def init_db():
     ]
     
     for u, p in fixed_users:
-        cursor.execute("SELECT * FROM users WHERE username = ?", (u,))
+        cursor.execute("SELECT * FROM users WHERE username = %s" if DATABASE_URL else "SELECT * FROM users WHERE username = ?", (u,))
         if not cursor.fetchone():
-            cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
+            cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (%s, %s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
                            (u, p, "What is your pet name?", "dog", "Never"))
 
     # Auto-add Test1 & Test2 users for keep-alive chat
     cursor.execute("SELECT * FROM users WHERE username = 'Test1'")
     if not cursor.fetchone():
-        cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
+        cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (%s, %s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
                        ("Test1", "testpass123", "What is your pet name?", "dog", "Never"))
         
     cursor.execute("SELECT * FROM users WHERE username = 'Test2'")
     if not cursor.fetchone():
-        cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
+        cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (%s, %s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
                        ("Test2", "testpass123", "What is your pet name?", "cat", "Never"))
 
     conn.commit()
+    cursor.close()
     conn.close()
 
 init_db()
@@ -1270,7 +1297,7 @@ def keep_alive_bot():
     while True:
         try:
             time.sleep(300)
-            conn = sqlite3.connect(DB_FILE)
+            conn = get_db_connection()
             cursor = conn.cursor()
             room = "private_Test1_Test2"
             ROOM_PASSWORDS[room] = "ghost_secure_direct_pass_999"
@@ -1278,12 +1305,20 @@ def keep_alive_bot():
             timestamp = datetime.datetime.now().timestamp() * 1000
             msg_id_1 = 'bot_msg_' + str(int(timestamp))
             
-            cursor.execute("INSERT OR REPLACE INTO pending_messages (id, room, sender, recipient, data, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-                           (msg_id_1, room, "Test1", "Test2", str({
-                               'id': msg_id_1, 'room': room, 'sender': 'Test1', 'user': 'Test1', 
-                               'type': 'text', 'content': 'Keep-alive automated ping', 'timestamp': timestamp
-                           }), timestamp))
+            if DATABASE_URL:
+                cursor.execute("INSERT INTO pending_messages (id, room, sender, recipient, data, timestamp) VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO NOTHING",
+                               (msg_id_1, room, "Test1", "Test2", str({
+                                   'id': msg_id_1, 'room': room, 'sender': 'Test1', 'user': 'Test1', 
+                                   'type': 'text', 'content': 'Keep-alive automated ping', 'timestamp': timestamp
+                               }), timestamp))
+            else:
+                cursor.execute("INSERT OR REPLACE INTO pending_messages (id, room, sender, recipient, data, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+                               (msg_id_1, room, "Test1", "Test2", str({
+                                   'id': msg_id_1, 'room': room, 'sender': 'Test1', 'user': 'Test1', 
+                                   'type': 'text', 'content': 'Keep-alive automated ping', 'timestamp': timestamp
+                               }), timestamp))
             conn.commit()
+            cursor.close()
             conn.close()
         except Exception as e:
             pass
@@ -1300,10 +1335,11 @@ def logout():
     u = session.get('user')
     if u:
         ONLINE_USERS.discard(u)
-        conn = sqlite3.connect(DB_FILE)
+        conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("UPDATE users SET last_seen = ? WHERE username = ?", (datetime.datetime.now().strftime("%I:%M %p"), u))
+        cursor.execute("UPDATE users SET last_seen = %s WHERE username = %s" if DATABASE_URL else "UPDATE users SET last_seen = ? WHERE username = ?", (datetime.datetime.now().strftime("%I:%M %p"), u))
         conn.commit()
+        cursor.close()
         conn.close()
     session.clear()
     return redirect(url_for('home'))
@@ -1314,24 +1350,27 @@ def register():
     u, p = data.get('username', '').strip(), data.get('password', '').strip()
     q, a = data.get('question', '').strip(), data.get('answer', '').strip()
     if not u or not p or not a: return jsonify({"status": "error", "message": "All fields required!"}), 400
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE username = ?", (u,))
+    cursor.execute("SELECT * FROM users WHERE username = %s" if DATABASE_URL else "SELECT * FROM users WHERE username = ?", (u,))
     if cursor.fetchone():
+        cursor.close()
         conn.close()
         return jsonify({"status": "error", "message": "Username already exists!"}), 400
-    cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", (u, p, q, a, "Never"))
+    cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (%s, %s, %s, %s, %s)" if DATABASE_URL else "INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", (u, p, q, a, "Never"))
     conn.commit()
+    cursor.close()
     conn.close()
     return jsonify({"status": "success"})
 
 @app.route('/get-question')
 def get_question():
     u = request.args.get('username', '').strip()
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT sec_question FROM users WHERE username = ?", (u,))
+    cursor.execute("SELECT sec_question FROM users WHERE username = %s" if DATABASE_URL else "SELECT sec_question FROM users WHERE username = ?", (u,))
     row = cursor.fetchone()
+    cursor.close()
     conn.close()
     return jsonify({"question": row[0]}) if row else (jsonify({"error": "User not found"}), 404)
 
@@ -1340,18 +1379,21 @@ def reset_password():
     data = request.json
     u, ans, p = data.get('username', '').strip(), data.get('answer', '').strip(), data.get('new_password', '').strip()
     if not u or not ans or not p: return jsonify({"status": "error", "message": "All fields required!"}), 400
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT sec_answer FROM users WHERE username = ?", (u,))
+    cursor.execute("SELECT sec_answer FROM users WHERE username = %s" if DATABASE_URL else "SELECT sec_answer FROM users WHERE username = ?", (u,))
     row = cursor.fetchone()
     if not row:
+        cursor.close()
         conn.close()
         return jsonify({"status": "error", "message": "Username not found!"}), 404
     if row[0].lower() != ans.lower():
+        cursor.close()
         conn.close()
         return jsonify({"status": "error", "message": "Incorrect Security Answer!"}), 401
-    cursor.execute("UPDATE users SET password = ? WHERE username = ?", (p, u))
+    cursor.execute("UPDATE users SET password = %s WHERE username = %s" if DATABASE_URL else "UPDATE users SET password = ? WHERE username = ?", (p, u))
     conn.commit()
+    cursor.close()
     conn.close()
     return jsonify({"status": "success"})
 
@@ -1359,14 +1401,16 @@ def reset_password():
 def login():
     data = request.json
     u, p = data.get('username', '').strip(), data.get('password', '').strip()
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM blocked WHERE username = ?", (u,))
+    cursor.execute("SELECT * FROM blocked WHERE username = %s" if DATABASE_URL else "SELECT * FROM blocked WHERE username = ?", (u,))
     if cursor.fetchone():
+        cursor.close()
         conn.close()
         return jsonify({"status": "error", "message": "User is blocked!"}), 403
-    cursor.execute("SELECT password FROM users WHERE username = ?", (u,))
+    cursor.execute("SELECT password FROM users WHERE username = %s" if DATABASE_URL else "SELECT password FROM users WHERE username = ?", (u,))
     row = cursor.fetchone()
+    cursor.close()
     conn.close()
     if row and row[0] == p:
         session['authenticated'] = True
@@ -1380,22 +1424,24 @@ def login():
 def check_session():
     user = session.get('user')
     if not user: return jsonify({"authenticated": False})
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM blocked WHERE username = ?", (user,))
+    cursor.execute("SELECT * FROM blocked WHERE username = %s" if DATABASE_URL else "SELECT * FROM blocked WHERE username = ?", (user,))
     is_blocked = cursor.fetchone() is not None
-    cursor.execute("SELECT * FROM users WHERE username = ?", (user,))
+    cursor.execute("SELECT * FROM users WHERE username = %s" if DATABASE_URL else "SELECT * FROM users WHERE username = ?", (user,))
     is_deleted = cursor.fetchone() is None
+    cursor.close()
     conn.close()
     if session.get('authenticated') and not is_blocked and not is_deleted: ONLINE_USERS.add(user)
     return jsonify({"authenticated": session.get('authenticated', False) and not is_blocked and not is_deleted, "is_admin": session.get('is_admin', False), "username": user, "is_blocked": is_blocked, "is_deleted": is_deleted})
 
 @app.route('/get-settings')
 def get_settings():
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT value FROM app_settings WHERE key = 'beep_interval'")
     row = cursor.fetchone()
+    cursor.close()
     conn.close()
     val = int(row[0]) if row else 30000
     return jsonify({"beep_interval": val})
@@ -1404,10 +1450,11 @@ def get_settings():
 def get_contacts():
     user = session.get('user')
     if not user: return jsonify({"contacts": []}), 401
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT contact_username FROM contacts WHERE owner = ?", (user,))
+    cursor.execute("SELECT contact_username FROM contacts WHERE owner = %s" if DATABASE_URL else "SELECT contact_username FROM contacts WHERE owner = ?", (user,))
     contacts = [row[0] for row in cursor.fetchall()]
+    cursor.close()
     conn.close()
     return jsonify({"contacts": contacts})
 
@@ -1419,20 +1466,23 @@ def add_contact():
     if not target: return jsonify({"status": "error", "message": "Enter a username"}), 400
     if target == user: return jsonify({"status": "error", "message": "Cannot add yourself"}), 400
 
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM users WHERE username = ?", (target,))
+    cursor.execute("SELECT * FROM users WHERE username = %s" if DATABASE_URL else "SELECT * FROM users WHERE username = ?", (target,))
     if not cursor.fetchone():
+        cursor.close()
         conn.close()
         return jsonify({"status": "error", "message": "User does not exist!"}), 404
 
-    cursor.execute("SELECT * FROM contacts WHERE owner = ? AND contact_username = ?", (user, target))
+    cursor.execute("SELECT * FROM contacts WHERE owner = %s AND contact_username = %s" if DATABASE_URL else "SELECT * FROM contacts WHERE owner = ? AND contact_username = ?", (user, target))
     if cursor.fetchone():
+        cursor.close()
         conn.close()
         return jsonify({"status": "error", "message": "Already in contacts!"}), 400
 
-    cursor.execute("INSERT INTO contacts (owner, contact_username) VALUES (?, ?)", (user, target))
+    cursor.execute("INSERT INTO contacts (owner, contact_username) VALUES (%s, %s)" if DATABASE_URL else "INSERT INTO contacts (owner, contact_username) VALUES (?, ?)", (user, target))
     conn.commit()
+    cursor.close()
     conn.close()
     return jsonify({"status": "success"})
 
@@ -1441,10 +1491,11 @@ def remove_contact():
     user = session.get('user')
     if not user: return jsonify({"status": "error", "message": "Unauthorized"}), 401
     target = request.json.get('contact', '').strip()
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM contacts WHERE owner = ? AND contact_username = ?", (user, target))
+    cursor.execute("DELETE FROM contacts WHERE owner = %s AND contact_username = %s" if DATABASE_URL else "DELETE FROM contacts WHERE owner = ? AND contact_username = ?", (user, target))
     conn.commit()
+    cursor.close()
     conn.close()
     return jsonify({"status": "success"})
 
@@ -1471,7 +1522,7 @@ def admin_panel():
 @app.route('/get-admin-data')
 def get_admin_data():
     if not session.get('is_admin', False): return jsonify({}), 403
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute("SELECT username FROM users")
     users = [row[0] for row in cursor.fetchall()]
@@ -1480,6 +1531,7 @@ def get_admin_data():
     cursor.execute("SELECT value FROM app_settings WHERE key = 'beep_interval'")
     row = cursor.fetchone()
     beep_interval = int(row[0]) if row else 30000
+    cursor.close()
     conn.close()
     return jsonify({"users": users, "blocked": blocked, "beep_interval": beep_interval})
 
@@ -1488,10 +1540,11 @@ def admin_update_beep():
     if not session.get('is_admin', False): return jsonify({}), 403
     seconds = request.json.get('seconds', 30)
     millis = int(seconds) * 1000
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("UPDATE app_settings SET value = ? WHERE key = 'beep_interval'", (str(millis),))
+    cursor.execute("UPDATE app_settings SET value = %s WHERE key = 'beep_interval'" if DATABASE_URL else "UPDATE app_settings SET value = ? WHERE key = 'beep_interval'", (str(millis),))
     conn.commit()
+    cursor.close()
     conn.close()
     socketio.emit('global_beep_update', {"beep_interval": millis})
     return jsonify({"status": "success"})
@@ -1502,10 +1555,14 @@ def block_user():
     u = request.json.get('username')
     if u and u != "admin":
         ONLINE_USERS.discard(u)
-        conn = sqlite3.connect(DB_FILE)
+        conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("INSERT OR IGNORE INTO blocked (username) VALUES (?)", (u,))
+        if DATABASE_URL:
+            cursor.execute("INSERT INTO blocked (username) VALUES (%s) ON CONFLICT (username) DO NOTHING", (u,))
+        else:
+            cursor.execute("INSERT OR IGNORE INTO blocked (username) VALUES (?)", (u,))
         conn.commit()
+        cursor.close()
         conn.close()
     return jsonify({"status": "success"})
 
@@ -1514,10 +1571,11 @@ def unblock_user():
     if not session.get('is_admin', False): return jsonify({}), 403
     u = request.json.get('username')
     if u:
-        conn = sqlite3.connect(DB_FILE)
+        conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM blocked WHERE username = ?", (u,))
+        cursor.execute("DELETE FROM blocked WHERE username = %s" if DATABASE_URL else "DELETE FROM blocked WHERE username = ?", (u,))
         conn.commit()
+        cursor.close()
         conn.close()
     return jsonify({"status": "success"})
 
@@ -1527,12 +1585,13 @@ def delete_user():
     u = request.json.get('username')
     if u and u != "admin":
         ONLINE_USERS.discard(u)
-        conn = sqlite3.connect(DB_FILE)
+        conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM users WHERE username = ?", (u,))
-        cursor.execute("DELETE FROM blocked WHERE username = ?", (u,))
-        cursor.execute("DELETE FROM contacts WHERE owner = ? OR contact_username = ?", (u, u))
+        cursor.execute("DELETE FROM users WHERE username = %s" if DATABASE_URL else "DELETE FROM users WHERE username = ?", (u,))
+        cursor.execute("DELETE FROM blocked WHERE username = %s" if DATABASE_URL else "DELETE FROM blocked WHERE username = ?", (u,))
+        cursor.execute("DELETE FROM contacts WHERE owner = %s OR contact_username = %s" if DATABASE_URL else "DELETE FROM contacts WHERE owner = ? OR contact_username = ?", (u, u))
         conn.commit()
+        cursor.close()
         conn.close()
     return jsonify({"status": "success"})
 
@@ -1540,12 +1599,13 @@ def delete_user():
 def chat():
     user = session.get('user')
     if not user: return redirect(url_for('home'))
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT * FROM blocked WHERE username = ?", (user,))
+    cursor.execute("SELECT * FROM blocked WHERE username = %s" if DATABASE_URL else "SELECT * FROM blocked WHERE username = ?", (user,))
     is_blocked = cursor.fetchone() is not None
-    cursor.execute("SELECT * FROM users WHERE username = ?", (user,))
+    cursor.execute("SELECT * FROM users WHERE username = %s" if DATABASE_URL else "SELECT * FROM users WHERE username = ?", (user,))
     is_deleted = cursor.fetchone() is None
+    cursor.close()
     conn.close()
     if not session.get('authenticated') or is_blocked or is_deleted: return redirect(url_for('home'))
     return CHAT_HTML
@@ -1570,9 +1630,9 @@ def handle_room_verification(data):
 def handle_fetch_pending(data):
     room = data.get('room')
     username = data.get('user')
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT id, data FROM pending_messages WHERE room = ? AND recipient = ?", (room, username))
+    cursor.execute("SELECT id, data FROM pending_messages WHERE room = %s AND recipient = %s" if DATABASE_URL else "SELECT id, data FROM pending_messages WHERE room = ? AND recipient = ?", (room, username))
     rows = cursor.fetchall()
     pending_list = []
     for row in rows:
@@ -1583,6 +1643,7 @@ def handle_fetch_pending(data):
             pending_list.append(msg_json)
         except Exception as e:
             pass
+    cursor.close()
     conn.close()
     if pending_list:
         emit('receive_pending_batch', {"messages": pending_list}, to=request.sid)
@@ -1591,10 +1652,11 @@ def handle_fetch_pending(data):
 def handle_ack_pending(data):
     room = data.get('room')
     username = data.get('user')
-    conn = sqlite3.connect(DB_FILE)
+    conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM pending_messages WHERE room = ? AND recipient = ?", (room, username))
+    cursor.execute("DELETE FROM pending_messages WHERE room = %s AND recipient = %s" if DATABASE_URL else "DELETE FROM pending_messages WHERE room = ? AND recipient = ?", (room, username))
     conn.commit()
+    cursor.close()
     conn.close()
 
 @socketio.on('stop_my_unread_alarm')
@@ -1651,11 +1713,16 @@ def handle_message(data):
             if room.startswith("private_"):
                 parts = room.split("_")
                 recipient = parts[2] if parts[1] == msg_data['sender'] else parts[1]
-                conn = sqlite3.connect(DB_FILE)
+                conn = get_db_connection()
                 cursor = conn.cursor()
-                cursor.execute("INSERT OR REPLACE INTO pending_messages (id, room, sender, recipient, data, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
-                               (msg_data['id'], room, msg_data['sender'], recipient, str(msg_data), msg_data['timestamp']))
+                if DATABASE_URL:
+                    cursor.execute("INSERT INTO pending_messages (id, room, sender, recipient, data, timestamp) VALUES (%s, %s, %s, %s, %s, %s) ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data",
+                                   (msg_data['id'], room, msg_data['sender'], recipient, str(msg_data), msg_data['timestamp']))
+                else:
+                    cursor.execute("INSERT OR REPLACE INTO pending_messages (id, room, sender, recipient, data, timestamp) VALUES (?, ?, ?, ?, ?, ?)",
+                                   (msg_data['id'], room, msg_data['sender'], recipient, str(msg_data), msg_data['timestamp']))
                 conn.commit()
+                cursor.close()
                 conn.close()
 
                 if recipient in USER_SID_MAP:
@@ -1676,10 +1743,11 @@ def handle_delete_for_everyone(data):
     room = data.get('room')
     msg_id = data.get('id')
     if ROOM_PASSWORDS.get(room) == data.get('password'):
-        conn = sqlite3.connect(DB_FILE)
+        conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute("DELETE FROM pending_messages WHERE id = ?", (msg_id,))
+        cursor.execute("DELETE FROM pending_messages WHERE id = %s" if DATABASE_URL else "DELETE FROM pending_messages WHERE id = ?", (msg_id,))
         conn.commit()
+        cursor.close()
         conn.close()
         emit('remove_message_card', {"id": msg_id}, to=room)
 
