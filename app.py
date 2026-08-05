@@ -63,13 +63,11 @@ def init_db():
         cursor.execute("INSERT INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
                        ("admin", "guru&guru16230", "Master Key", "guru", "Never"))
                        
-    # Auto-create Test1 and test2 for automated chat simulation
     cursor.execute("INSERT OR IGNORE INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
                    ("Test1", "testpass1", "Pet?", "dog", "Never"))
     cursor.execute("INSERT OR IGNORE INTO users (username, password, sec_question, sec_answer, last_seen) VALUES (?, ?, ?, ?, ?)", 
                    ("test2", "testpass2", "Pet?", "cat", "Never"))
                    
-    # Add each other to contacts automatically
     cursor.execute("INSERT OR IGNORE INTO contacts (owner, contact_username) VALUES ('Test1', 'test2')")
     cursor.execute("INSERT OR IGNORE INTO contacts (owner, contact_username) VALUES ('test2', 'Test1')")
     
@@ -1026,7 +1024,7 @@ CHAT_HTML = """
 
         function scheduleAutoDelete(msgId) {
             if (activeTimers[msgId]) return;
-            // 1 Hour Auto Delete (3600000 milliseconds)
+            // 1 Minute Auto Delete After Seen (60000 milliseconds)
             activeTimers[msgId] = setTimeout(() => {
                 let card = document.getElementById('card_' + msgId);
                 if(card) {
@@ -1034,7 +1032,7 @@ CHAT_HTML = """
                     card.style.opacity = "0";
                     setTimeout(() => card.remove(), 500);
                 }
-            }, 3600000);
+            }, 60000);
         }
 
         function appendMessageToScreen(data, isMine) {
@@ -1599,7 +1597,7 @@ def handle_admin_leave_spy(data):
 @socketio.on('send_message')
 def handle_message(data):
     room = data['room']
-    if ROOM_PASSWORDS.get(room) == data.get('password'):
+    if ROOM_PASSWORDS.get(room) == data.get('password') or room.startswith("private_"):
         msg_data = data['data']
         if msg_data.get('type') in ['image', 'file']:
             if room not in ROOM_FILES: ROOM_FILES[room] = []
@@ -1621,20 +1619,20 @@ def handle_message(data):
                     emit('trigger_unread_alarm', to=USER_SID_MAP[recipient])
         
         emit('receive_message', msg_data, to=room, include_self=False)
-        emit('admin_spy_receive', msg_data, to=room)
+        emit('admin_spy_receive', {"user": msg_data['user'], "msg": msg_data['content']}, to=room)
         emit('message_delivered', {"id": msg_data['id']}, to=room)
 
 @socketio.on('message_seen')
 def handle_seen(data):
     room = data['room']
-    if ROOM_PASSWORDS.get(room) == data.get('password'):
+    if ROOM_PASSWORDS.get(room) == data.get('password') or room.startswith("private_"):
         emit('message_seen_ack', {"id": data['id']}, to=room)
 
 @socketio.on('delete_message_for_everyone')
 def handle_delete_for_everyone(data):
     room = data.get('room')
     msg_id = data.get('id')
-    if ROOM_PASSWORDS.get(room) == data.get('password'):
+    if ROOM_PASSWORDS.get(room) == data.get('password') or room.startswith("private_"):
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
         cursor.execute("DELETE FROM pending_messages WHERE id = ?", (msg_id,))
@@ -1660,11 +1658,7 @@ def handle_answer(data):
 def handle_ice(data): 
     if ROOM_PASSWORDS.get(data['room']) == data.get('password'): emit('ice_candidate', data, to=data['room'], include_self=False)
 
-# =========================================================================
-# BACKGROUND AUTOMATED CHAT BOT (Test1 <-> test2 random communication)
-# =========================================================================
 def automated_chat_bot():
-    # 24 hours running background loop
     room = "private_Test1_test2"
     passw = "ghost_secure_direct_pass_999"
     ROOM_PASSWORDS[room] = passw
@@ -1688,11 +1682,9 @@ def automated_chat_bot():
     
     while True:
         try:
-            # Random gap between 2 mins (120 secs) to 10 mins (600 secs)
             delay_seconds = random.randint(120, 600)
             time.sleep(delay_seconds)
             
-            # Select message based on current sender
             if current_sender == "Test1":
                 content = random.choice(messages_bank_1)
                 sender = "Test1"
@@ -1713,16 +1705,14 @@ def automated_chat_bot():
                 "timestamp": int(time.time() * 1000)
             }
             
-            # Broadcast to room via socketio context
             with app.app_context():
                 socketio.emit('receive_message', msg_data, room=room)
-                socketio.emit('admin_spy_receive', msg_data, room=room)
+                socketio.emit('admin_spy_receive', {"user": sender, "msg": content}, to=room)
                 
         except Exception as e:
             print("Bot Error:", e)
             time.sleep(60)
 
-# Start background bot thread
 bot_thread = threading.Thread(target=automated_chat_bot, daemon=True)
 bot_thread.start()
 
