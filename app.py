@@ -39,7 +39,6 @@ def init_db():
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # PostgreSQL syntax adjustments (TEXT PRIMARY KEY works same in both)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             username TEXT PRIMARY KEY,
